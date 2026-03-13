@@ -29,10 +29,12 @@ RUN mvn -f ./pom.xml clean package -Dmaven.test.skip -T 1C
 #
 FROM amazoncorretto:21-al2023
 
+# Install tar (not included in minimal corretto image)
+RUN yum install -y tar gzip && yum clean all
+
 # Host the server in a location that won't have permissions issues.
 WORKDIR /opt/server
 # Download WZ files from R2 (30MB compressed, 573MB extracted)
-# curl-minimal is pre-installed in amazoncorretto:21-al2023
 ARG WZ_URL=https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/server-wz.tar.gz
 RUN curl -fsSL "$WZ_URL" -o /tmp/wz.tar.gz && tar xzf /tmp/wz.tar.gz && rm /tmp/wz.tar.gz
 # Copy the JAR we build earlier.
