@@ -1,5 +1,5 @@
 # Game client files - never push to GitHub
-client/
+/client/
 *.wz
 *.exe
 *.zip
