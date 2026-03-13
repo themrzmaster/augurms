@@ -29,8 +29,8 @@ RUN mvn -f ./pom.xml clean package -Dmaven.test.skip -T 1C
 #
 FROM amazoncorretto:21-al2023
 
-# Install curl for downloading WZ files
-RUN yum install -y tar gzip && yum clean all
+# Install curl + tar for downloading WZ files from R2
+RUN yum install -y curl tar gzip && yum clean all
 
 # Host the server in a location that won't have permissions issues.
 WORKDIR /opt/server
