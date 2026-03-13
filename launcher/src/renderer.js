@@ -54,15 +54,16 @@ async function checkServerStatus() {
     text.textContent = "Cannot reach server";
   }
 
-  // Also fetch rates
+  // Also fetch rates from config (raw YAML structure: worlds[0].exp_rate etc.)
   try {
     const res = await fetch("https://augurms.com/api/config");
     if (res.ok) {
       const data = await res.json();
-      if (data?.config?.server) {
-        $("rate-exp").textContent = (data.config.server.EXP_RATE || "?") + "x";
-        $("rate-drop").textContent = (data.config.server.DROP_RATE || "?") + "x";
-        $("rate-meso").textContent = (data.config.server.MESO_RATE || "?") + "x";
+      const world = data?.worlds?.[0];
+      if (world) {
+        $("rate-exp").textContent = (world.exp_rate || "?") + "x";
+        $("rate-drop").textContent = (world.drop_rate || "?") + "x";
+        $("rate-meso").textContent = (world.meso_rate || "?") + "x";
       }
     }
   } catch {}

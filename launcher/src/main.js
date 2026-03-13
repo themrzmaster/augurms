@@ -115,7 +115,7 @@ ipcMain.handle("server:status", async () => {
   try {
     const data = await fetchJSON(STATUS_URL);
     return {
-      online: data?.docker?.maplestory === "running",
+      online: data?.status === "running",
       players: data?.players || 0,
     };
   } catch {
