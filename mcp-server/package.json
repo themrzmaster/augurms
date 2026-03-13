@@ -1,8 +1,9 @@
 {
-  "name": "cosmic-mcp-server",
+  "name": "cosmic-mcp",
   "version": "1.0.0",
-  "private": true,
+  "description": "MCP server for managing Cosmic MapleStory server",
   "type": "module",
+  "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
@@ -10,11 +11,14 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "zod": "^4.3.6"
+    "fast-xml-parser": "^5.2.3",
+    "mysql2": "^3.14.1",
+    "yaml": "^2.7.1",
+    "zod": "^3.25.23"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
   }
 }

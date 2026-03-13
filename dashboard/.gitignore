@@ -1,0 +1,20 @@
+node_modules/
+.next/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# env files
+.env
+.env.local
+.env.production
+
+# OS
+.DS_Store
+Thumbs.db
+
+# mcp-server build
+mcp-server/dist/
+mcp-server/node_modules/
+
+# reddit post draft
+reddit-post.md

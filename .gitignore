@@ -1,20 +1,27 @@
-node_modules/
-.next/
-tsconfig.tsbuildinfo
-*.tsbuildinfo
+# Game client files - never push to GitHub
+client/
+*.wz
+*.exe
+*.zip
 
-# env files
-.env
-.env.local
-.env.production
+# Launcher build artifacts
+launcher/dist/
+launcher/node_modules/
+
+# MCP server build artifacts
+mcp-server/dist/
+mcp-server/node_modules/
+
+# Dashboard
+dashboard/node_modules/
+dashboard/.next/
+
+# Server (upstream Cosmic - has its own repo)
+server/
+
+# Node
+node_modules/
 
 # OS
 .DS_Store
 Thumbs.db
-
-# mcp-server build
-mcp-server/dist/
-mcp-server/node_modules/
-
-# reddit post draft
-reddit-post.md

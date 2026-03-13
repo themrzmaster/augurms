@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AugurMS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Custom titlebar -->
+  <div class="titlebar">
+    <div class="titlebar-drag">
+      <img src="../assets/logo.png" alt="" class="titlebar-logo" />
+      <span class="titlebar-text">AugurMS</span>
+    </div>
+    <div class="titlebar-controls">
+      <button class="titlebar-btn" id="btn-minimize" title="Minimize">&#x2014;</button>
+      <button class="titlebar-btn titlebar-close" id="btn-close" title="Close">&#x2715;</button>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="container">
+    <!-- Left panel: branding + news -->
+    <div class="panel-left">
+      <!-- Hero -->
+      <div class="hero">
+        <div class="hero-glow"></div>
+        <img src="../assets/logo.png" alt="AugurMS" class="hero-logo" />
+        <p class="hero-sub">MapleStory v83 &middot; Guided by AI</p>
+        <div class="status-badge" id="status-badge">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">Checking...</span>
+        </div>
+      </div>
+
+      <!-- News feed from GM AI -->
+      <div class="news-section">
+        <h3 class="news-title">
+          <span class="news-icon">&#x1F9E0;</span>
+          The Augur's Log
+        </h3>
+        <div class="news-list" id="news-list">
+          <div class="news-item news-loading">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right panel: actions -->
+    <div class="panel-right">
+      <!-- Server rates -->
+      <div class="rates-bar" id="rates-bar">
+        <div class="rate"><span class="rate-value" id="rate-exp">--</span><span class="rate-label">EXP</span></div>
+        <div class="rate"><span class="rate-value" id="rate-drop">--</span><span class="rate-label">DROP</span></div>
+        <div class="rate"><span class="rate-value" id="rate-meso">--</span><span class="rate-label">MESO</span></div>
+      </div>
+
+      <!-- Game path -->
+      <div class="path-section">
+        <div class="path-label">Install Location</div>
+        <div class="path-row">
+          <div class="path-display" id="path-display">Searching...</div>
+          <button class="btn-browse" id="btn-browse" title="Browse">&#128193;</button>
+        </div>
+      </div>
+
+      <!-- Update status -->
+      <div class="update-section" id="update-section">
+        <div class="update-status" id="update-status">
+          <span class="update-icon">&#x1F50D;</span>
+          <span id="update-text">Checking for updates...</span>
+        </div>
+        <div class="progress-bar-container" id="progress-container" style="display:none">
+          <div class="progress-bar" id="progress-bar"></div>
+          <div class="progress-text" id="progress-text">0%</div>
+        </div>
+      </div>
+
+      <!-- Spacer -->
+      <div class="spacer"></div>
+
+      <!-- Links -->
+      <div class="links-row">
+        <a class="link-btn" id="link-register">Create Account</a>
+        <a class="link-btn" id="link-website">Website</a>
+        <a class="link-btn" id="link-discord">Discord</a>
+      </div>
+
+      <!-- Play button -->
+      <button class="btn-play" id="btn-play" disabled>
+        <span class="btn-play-text" id="btn-play-text">CHECKING...</span>
+        <div class="btn-play-glow"></div>
+      </button>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
