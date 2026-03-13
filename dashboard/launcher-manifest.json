@@ -1,10 +1,10 @@
 {
-  "version": "1.0.1",
-  "updatedAt": "2026-03-13T18:30:00Z",
+  "version": "1.0.2",
+  "updatedAt": "2026-03-13T18:50:00Z",
   "files": [
     {
       "name": "AugurMS.exe",
-      "hash": "9e25555130c5a099bfd5c5962d23c0da21bc71f73a578873aef0c7ce43fb246c",
+      "hash": "d4be83197bad0ff5f7a6b84bbb80ea006e6350e644f0b2ee1966ef5a81f925dc",
       "size": 9920523,
       "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/AugurMS.exe"
     },
