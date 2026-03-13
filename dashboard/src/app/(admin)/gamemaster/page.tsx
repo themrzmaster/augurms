@@ -315,21 +315,16 @@ function SchedulePanel() {
 
       {/* Model selector - always visible */}
       <div className="mt-3">
-        <label className="text-[11px] font-medium text-text-muted block mb-1">AI Model</label>
-        <select
+        <label className="text-[11px] font-medium text-text-muted block mb-1">AI Model (OpenRouter)</label>
+        <input
+          type="text"
           value={schedule.model}
-          onChange={(e) => updateModel(e.target.value)}
-          className="w-full rounded-lg border border-border bg-bg-primary px-3 py-1.5 text-xs text-text-primary"
-        >
-          <option value="moonshotai/kimi-k2.5">Kimi K2.5 (Moonshot)</option>
-          <option value="anthropic/claude-sonnet-4">Claude Sonnet 4</option>
-          <option value="anthropic/claude-haiku-4">Claude Haiku 4</option>
-          <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
-          <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
-          <option value="openai/gpt-4.1-mini">GPT-4.1 Mini</option>
-          <option value="openai/gpt-4.1">GPT-4.1</option>
-          <option value="deepseek/deepseek-chat-v3">DeepSeek V3</option>
-        </select>
+          onChange={(e) => setSchedule({ ...schedule, model: e.target.value })}
+          onBlur={() => updateModel(schedule.model)}
+          onKeyDown={(e) => { if (e.key === "Enter") updateModel(schedule.model); }}
+          placeholder="e.g. anthropic/claude-sonnet-4"
+          className="w-full rounded-lg border border-border bg-bg-primary px-3 py-1.5 text-xs text-text-primary font-mono"
+        />
       </div>
 
       {schedule.enabled && (
