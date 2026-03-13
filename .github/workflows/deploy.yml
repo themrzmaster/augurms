@@ -1,4 +1,4 @@
-name: Deploy to Fly.io
+name: Deploy & Release
 
 on:
   push:
@@ -34,3 +34,41 @@ jobs:
         run: flyctl deploy ./dashboard --remote-only --build-arg NEXT_PUBLIC_TURNSTILE_SITE_KEY="${{ secrets.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  build-launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: launcher
+        run: npm ci
+
+      - name: Build Windows installer
+        working-directory: launcher
+        run: npx electron-builder --win --x64
+
+      - name: Get version
+        id: version
+        working-directory: launcher
+        shell: bash
+        run: echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Delete existing release
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete "launcher-v${{ steps.version.outputs.version }}" --yes
+
+      - name: Create release with launcher
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "launcher-v${{ steps.version.outputs.version }}" \
+            --title "AugurMS Launcher v${{ steps.version.outputs.version }}" \
+            --notes "Auto-built AugurMS Launcher for Windows. Download and run to play AugurMS." \
+            "launcher/dist/AugurMS Setup ${{ steps.version.outputs.version }}.exe"
