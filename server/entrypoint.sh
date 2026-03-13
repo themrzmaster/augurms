@@ -20,7 +20,7 @@ if [ -n "$DISABLE_AUTO_REGISTER" ]; then
 fi
 
 echo "=== AugurMS Game Server starting ==="
-grep -E '^\s+(HOST|LANHOST|DB_HOST|DB_PASS|AUTOMATIC_REGISTER):' "$CONFIG" | head -5
+grep -E '^\s+(HOST|LANHOST|DB_HOST|AUTOMATIC_REGISTER):' "$CONFIG" | head -5
 echo "DB_HOST env override: ${DB_HOST:-none}"
 echo "=================================="
 

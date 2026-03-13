@@ -24,6 +24,12 @@ server/target/
 # Node
 node_modules/
 
+# Secrets / env files
+.env
+.env.*
+*.pem
+*.key
+
 # LLM context (local only)
 CLAUDE.md
 
