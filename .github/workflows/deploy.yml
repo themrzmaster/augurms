@@ -56,15 +56,20 @@ jobs:
         id: version
         working-directory: launcher
         shell: bash
-        run: echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Launcher version: $VERSION"
 
       - name: Delete existing release
         continue-on-error: true
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release delete "launcher-v${{ steps.version.outputs.version }}" --yes
 
       - name: Create release with launcher
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
