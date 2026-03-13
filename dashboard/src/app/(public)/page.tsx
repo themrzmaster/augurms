@@ -8,10 +8,22 @@ interface ServerStatus {
   docker?: { maplestory?: string };
 }
 
+function getTimeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export default function LandingPage() {
   const [status, setStatus] = useState<"online" | "offline" | "loading">("loading");
   const [rates, setRates] = useState({ exp: "1x", drop: "1x", meso: "1x" });
   const [installTab, setInstallTab] = useState<"launcher" | "manual">("launcher");
+  const [augurLog, setAugurLog] = useState<Array<{ type: string; text: string; date: string }>>([]);
 
   useEffect(() => {
     fetch("/api/server")
@@ -20,6 +32,13 @@ export default function LandingPage() {
         setStatus(data.docker?.maplestory === "running" ? "online" : "offline");
       })
       .catch(() => setStatus("offline"));
+
+    fetch("/api/launcher/news")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.news) setAugurLog(data.news.slice(0, 5));
+      })
+      .catch(() => {});
 
     fetch("/api/config")
       .then((r) => {
@@ -176,6 +195,49 @@ export default function LandingPage() {
             </div>
           ))}
         </div>
+
+        {/* Augur's Log */}
+        {augurLog.length > 0 && (
+          <div className="mt-20 w-full max-w-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="h-2 w-2 rounded-full bg-accent-gold shadow-[0_0_8px_rgba(245,197,66,0.5)] animate-pulse" />
+              <h2 className="text-lg font-bold text-text-primary">The Augur&apos;s Log</h2>
+              <span className="text-xs text-text-muted">Live AI Game Master activity</span>
+            </div>
+            <div className="space-y-2">
+              {augurLog.map((entry, i) => {
+                const typeColors: Record<string, string> = {
+                  rates: "border-accent-gold/20 text-accent-gold",
+                  drops: "border-accent-green/20 text-accent-green",
+                  event: "border-accent-purple/20 text-accent-purple",
+                  update: "border-accent-blue/20 text-accent-blue",
+                };
+                const typeLabels: Record<string, string> = {
+                  rates: "RATES",
+                  drops: "DROPS",
+                  event: "EVENT",
+                  update: "UPDATE",
+                };
+                const colors = typeColors[entry.type] || typeColors.update;
+                const label = typeLabels[entry.type] || "UPDATE";
+                const ago = getTimeAgo(entry.date);
+
+                return (
+                  <div
+                    key={i}
+                    className="flex items-start gap-3 rounded-lg border border-border bg-bg-card/30 px-4 py-3 backdrop-blur-sm"
+                  >
+                    <span className={`mt-0.5 shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold ${colors}`}>
+                      {label}
+                    </span>
+                    <p className="flex-1 text-sm text-text-secondary leading-relaxed">{entry.text}</p>
+                    <span className="shrink-0 text-xs text-text-muted">{ago}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Download section */}
         <div id="download" className="mt-20 w-full max-w-3xl scroll-mt-20">

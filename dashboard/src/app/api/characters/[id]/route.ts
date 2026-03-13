@@ -32,7 +32,7 @@ export async function GET(
 }
 
 const ALLOWED_FIELDS = [
-  "level", "str", "dex", "luk", "maxhp", "maxmp", "meso",
+  "level", "str", "dex", "int", "luk", "maxhp", "maxmp", "meso",
   "fame", "ap", "sp", "job", "map", "exp", "hp", "mp",
 ];
 
