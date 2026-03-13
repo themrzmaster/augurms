@@ -29,10 +29,14 @@ RUN mvn -f ./pom.xml clean package -Dmaven.test.skip -T 1C
 #
 FROM amazoncorretto:21-al2023
 
+# Install curl for downloading WZ files
+RUN yum install -y tar gzip && yum clean all
+
 # Host the server in a location that won't have permissions issues.
 WORKDIR /opt/server
-# Copy the wizet files first since they're so big and won't change often.
-COPY wz ./wz
+# Download WZ files from R2 (30MB compressed, 573MB extracted)
+ARG WZ_URL=https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/server-wz.tar.gz
+RUN curl -fsSL "$WZ_URL" | tar xz
 # Copy the JAR we build earlier.
 COPY --from=jar /opt/cosmic/target/Cosmic.jar ./Server.jar
 # Scripts are sourced on server startup, so you can mount over them for quicker redeploy.

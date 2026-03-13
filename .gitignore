@@ -20,6 +20,7 @@ dashboard/.next/
 server/database/docker-db-data/
 server/.git/
 server/target/
+server/wz/
 
 # Node
 node_modules/
