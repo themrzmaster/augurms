@@ -12,7 +12,36 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { username, password } = await request.json();
+  const { username, password, captchaToken } = await request.json();
+
+  // Verify Turnstile captcha
+  if (!captchaToken) {
+    return NextResponse.json(
+      { error: "Captcha verification required" },
+      { status: 400 }
+    );
+  }
+
+  const turnstileRes = await fetch(
+    "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        secret: process.env.TURNSTILE_SECRET_KEY!,
+        response: captchaToken,
+        remoteip: ip,
+      }),
+    }
+  );
+
+  const turnstileData = await turnstileRes.json();
+  if (!turnstileData.success) {
+    return NextResponse.json(
+      { error: "Captcha verification failed" },
+      { status: 403 }
+    );
+  }
 
   // Validate username: 4-12 chars, alphanumeric
   if (!username || !/^[a-zA-Z0-9]{4,12}$/.test(username)) {

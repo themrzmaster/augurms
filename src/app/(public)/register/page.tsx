@@ -1,8 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: string | HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "expired-callback"?: () => void;
+          "error-callback"?: () => void;
+          theme?: "light" | "dark" | "auto";
+        }
+      ) => string;
+      reset: (widgetId: string) => void;
+    };
+  }
+}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -11,6 +29,38 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const captchaRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<string | null>(null);
+
+  const renderWidget = useCallback(() => {
+    if (window.turnstile && captchaRef.current && !widgetIdRef.current) {
+      widgetIdRef.current = window.turnstile.render(captchaRef.current, {
+        sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!,
+        callback: (token: string) => setCaptchaToken(token),
+        "expired-callback": () => setCaptchaToken(""),
+        "error-callback": () => setCaptchaToken(""),
+        theme: "dark",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (window.turnstile) {
+      renderWidget();
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.onload = () => renderWidget();
+    document.head.appendChild(script);
+
+    return () => {
+      script.remove();
+    };
+  }, [renderWidget]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,13 +71,18 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!captchaToken) {
+      setError("Please complete the captcha");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, captchaToken }),
       });
 
       const data = await res.json();
@@ -42,6 +97,10 @@ export default function RegisterPage() {
       setError("Network error");
     } finally {
       setLoading(false);
+      setCaptchaToken("");
+      if (widgetIdRef.current && window.turnstile) {
+        window.turnstile.reset(widgetIdRef.current);
+      }
     }
   }
 
@@ -117,9 +176,11 @@ export default function RegisterPage() {
             />
           </div>
 
+          <div ref={captchaRef} className="flex justify-center" />
+
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !captchaToken}
             className="w-full rounded-lg bg-accent-gold py-2.5 text-sm font-bold text-bg-primary transition hover:bg-accent-gold/90 disabled:opacity-50"
           >
             {loading ? "Creating account..." : "Create Account"}

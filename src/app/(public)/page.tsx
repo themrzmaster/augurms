@@ -10,6 +10,7 @@ interface ServerStatus {
 export default function LandingPage() {
   const [status, setStatus] = useState<"online" | "offline" | "loading">("loading");
   const [rates, setRates] = useState({ exp: "1x", drop: "1x", meso: "1x" });
+  const [installTab, setInstallTab] = useState<"launcher" | "manual">("launcher");
 
   useEffect(() => {
     fetch("/api/server")
@@ -163,20 +164,204 @@ export default function LandingPage() {
         </div>
 
         {/* Download section */}
-        <div id="download" className="mt-20 w-full max-w-2xl scroll-mt-20">
-          <h2 className="mb-4 text-2xl font-bold">Download</h2>
-          <div className="rounded-xl border border-border bg-bg-card/50 p-8 backdrop-blur-sm">
-            <p className="mb-4 text-text-secondary">
-              Download the patched v83 client to connect to AugurMS. Extract and run
-              the launcher &mdash; no additional setup required.
-            </p>
-            <a
-              href="#"
-              className="inline-flex items-center gap-2 rounded-lg bg-accent-blue px-6 py-3 font-semibold text-white transition hover:bg-accent-blue/90"
+        <div id="download" className="mt-20 w-full max-w-3xl scroll-mt-20">
+          <h2 className="mb-2 text-2xl font-bold">Download &amp; Play</h2>
+          <p className="mb-8 text-sm text-text-secondary">
+            Two ways to get started: use our <strong className="text-text-primary">Launcher</strong> (recommended) for automatic updates, or install manually.
+          </p>
+
+          {/* Tab toggle */}
+          <div className="mb-6 flex rounded-lg border border-border bg-bg-card/50 p-1">
+            <button
+              onClick={() => setInstallTab("launcher")}
+              className={`flex-1 rounded-md px-4 py-2.5 text-sm font-semibold transition ${
+                installTab === "launcher"
+                  ? "bg-accent-gold/10 text-accent-gold"
+                  : "text-text-muted hover:text-text-secondary"
+              }`}
             >
-              Download Client
-              <span className="text-sm opacity-70">(~1.5 GB)</span>
-            </a>
+              Launcher (Recommended)
+            </button>
+            <button
+              onClick={() => setInstallTab("manual")}
+              className={`flex-1 rounded-md px-4 py-2.5 text-sm font-semibold transition ${
+                installTab === "manual"
+                  ? "bg-accent-gold/10 text-accent-gold"
+                  : "text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              Manual Install
+            </button>
+          </div>
+
+          {installTab === "launcher" ? (
+            <div className="space-y-4">
+              {/* Launcher Step 1 */}
+              <div className="rounded-xl border border-border bg-bg-card/50 p-6 backdrop-blur-sm">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-gold/10 text-sm font-bold text-accent-gold">1</span>
+                  <div className="flex-1">
+                    <h3 className="mb-1 font-semibold text-text-primary">Install MapleStory v83 (base game)</h3>
+                    <p className="mb-3 text-sm text-text-secondary">
+                      Download the original v83 installer and run it. Use the default path (<code className="rounded bg-bg-primary/80 px-1.5 py-0.5 text-xs">C:\Nexon\MapleStory</code>) or any folder you prefer. Then <strong>delete</strong> these from the install folder:
+                    </p>
+                    <div className="mb-3 rounded-lg bg-bg-primary/50 px-4 py-2.5 font-mono text-xs text-text-secondary">
+                      <span className="text-accent-red">HShield/</span>{" "}<span className="text-text-muted">&middot;</span>{" "}
+                      <span className="text-accent-red">ASPLnchr.exe</span>{" "}<span className="text-text-muted">&middot;</span>{" "}
+                      <span className="text-accent-red">MapleStory.exe</span>{" "}<span className="text-text-muted">&middot;</span>{" "}
+                      <span className="text-accent-red">Patcher.exe</span>
+                    </div>
+                    <a
+                      href={"#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-2 text-sm font-medium text-text-primary transition hover:bg-border"
+                    >
+                      Download v83 Installer
+                      <span className="text-xs text-text-muted">(452 MB)</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* Launcher Step 2 */}
+              <div className="rounded-xl border border-border bg-bg-card/50 p-6 backdrop-blur-sm">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-gold/10 text-sm font-bold text-accent-gold">2</span>
+                  <div className="flex-1">
+                    <h3 className="mb-1 font-semibold text-text-primary">Install AugurMS Launcher</h3>
+                    <p className="mb-3 text-sm text-text-secondary">
+                      Download and run the launcher installer. It will auto-detect your MapleStory folder (or let you browse to it). The launcher <strong>automatically downloads and updates</strong> all game files &mdash; no manual file copying needed.
+                    </p>
+                    <a
+                      href={"#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-lg bg-accent-gold px-5 py-2.5 font-semibold text-bg-primary transition hover:bg-accent-gold/90 hover:shadow-[0_0_20px_rgba(245,197,66,0.3)]"
+                    >
+                      Download AugurMS Launcher
+                      <span className="text-sm opacity-70">(78 MB)</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* Launcher Step 3 */}
+              <div className="rounded-xl border border-border bg-bg-card/50 p-6 backdrop-blur-sm">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-green/10 text-sm font-bold text-accent-green">3</span>
+                  <div className="flex-1">
+                    <h3 className="mb-1 font-semibold text-text-primary">Create account &amp; play</h3>
+                    <p className="text-sm text-text-secondary">
+                      <a href="/register" className="font-medium text-accent-gold underline underline-offset-2">Create an account</a> on this site, then open the launcher and hit <strong>Play</strong>. The launcher shows live server status, current rates, and keeps your game files synced with the latest updates from the AI Game Master.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Launcher features callout */}
+              <div className="rounded-xl border border-accent-gold/15 bg-accent-gold/[0.03] p-5">
+                <h4 className="mb-2 text-sm font-semibold text-accent-gold">What the Launcher does</h4>
+                <ul className="space-y-1.5 text-xs leading-relaxed text-text-secondary">
+                  <li><strong className="text-text-primary">Auto-updates:</strong> When the AI Game Master changes game files, the launcher downloads them on your next launch. No re-downloading zips.</li>
+                  <li><strong className="text-text-primary">Server status:</strong> See if the server is online, how many players are on, and current EXP/DROP/MESO rates.</li>
+                  <li><strong className="text-text-primary">The Augur&apos;s Log:</strong> Live feed of what the AI is doing &mdash; rate changes, events, drop adjustments &mdash; right in the launcher.</li>
+                  <li><strong className="text-text-primary">File integrity:</strong> Checks your game files against the server manifest using SHA-256. Corrupted or missing files get re-downloaded.</li>
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Manual Step 1 */}
+              <div className="rounded-xl border border-border bg-bg-card/50 p-6 backdrop-blur-sm">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-gold/10 text-sm font-bold text-accent-gold">1</span>
+                  <div className="flex-1">
+                    <h3 className="mb-1 font-semibold text-text-primary">Install MapleStory v83 (base game)</h3>
+                    <p className="mb-3 text-sm text-text-secondary">
+                      Download the original v83 installer and run it. Install to any folder (default: <code className="rounded bg-bg-primary/80 px-1.5 py-0.5 text-xs">C:\Nexon\MapleStory</code>).
+                    </p>
+                    <a
+                      href={"#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-2 text-sm font-medium text-text-primary transition hover:bg-border"
+                    >
+                      Download v83 Installer
+                      <span className="text-xs text-text-muted">(452 MB)</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* Manual Step 2 */}
+              <div className="rounded-xl border border-border bg-bg-card/50 p-6 backdrop-blur-sm">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-gold/10 text-sm font-bold text-accent-gold">2</span>
+                  <div className="flex-1">
+                    <h3 className="mb-1 font-semibold text-text-primary">Clean the install folder</h3>
+                    <p className="text-sm text-text-secondary">
+                      Go to your MapleStory install folder and <strong>delete</strong> these files:
+                    </p>
+                    <div className="mt-2 rounded-lg bg-bg-primary/50 px-4 py-3 font-mono text-xs text-text-secondary">
+                      <div className="text-accent-red">HShield/</div>
+                      <div className="text-accent-red">ASPLnchr.exe</div>
+                      <div className="text-accent-red">MapleStory.exe</div>
+                      <div className="text-accent-red">Patcher.exe</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Manual Step 3 */}
+              <div className="rounded-xl border border-border bg-bg-card/50 p-6 backdrop-blur-sm">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-gold/10 text-sm font-bold text-accent-gold">3</span>
+                  <div className="flex-1">
+                    <h3 className="mb-1 font-semibold text-text-primary">Download AugurMS client files</h3>
+                    <p className="mb-3 text-sm text-text-secondary">
+                      Download the client pack and extract <strong>everything</strong> (AugurMS.exe + all .wz files) into your MapleStory install folder. Replace existing .wz files when prompted.
+                    </p>
+                    <a
+                      href={"#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-lg bg-accent-blue px-5 py-2.5 font-semibold text-white transition hover:bg-accent-blue/90 hover:shadow-[0_0_20px_rgba(96,165,250,0.3)]"
+                    >
+                      Download AugurMS Client
+                      <span className="text-sm opacity-70">(828 MB)</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* Manual Step 4 */}
+              <div className="rounded-xl border border-border bg-bg-card/50 p-6 backdrop-blur-sm">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-green/10 text-sm font-bold text-accent-green">4</span>
+                  <div className="flex-1">
+                    <h3 className="mb-1 font-semibold text-text-primary">Create account &amp; play</h3>
+                    <p className="text-sm text-text-secondary">
+                      <a href="/register" className="font-medium text-accent-gold underline underline-offset-2">Create an account</a> on this site, then double-click <strong>AugurMS.exe</strong> in your install folder. Log in and enjoy!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Note about updates */}
+              <div className="rounded-xl border border-accent-blue/15 bg-accent-blue/[0.03] p-4">
+                <p className="text-xs leading-relaxed text-text-secondary">
+                  <strong className="text-accent-blue">Tip:</strong> With manual install, you&apos;ll need to re-download the client pack when the AI Game Master pushes updates. Use the <strong>Launcher</strong> instead for automatic updates.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Warning */}
+          <div className="mt-4 rounded-xl border border-accent-orange/20 bg-accent-orange/5 p-4">
+            <p className="text-xs leading-relaxed text-text-secondary">
+              <strong className="text-accent-orange">Windows Security:</strong> AugurMS.exe may be flagged as a virus &mdash; this is a false positive common with all modified game clients. Add your MapleStory install folder as an exclusion in <em>Windows Security &gt; Virus &amp; threat protection settings &gt; Exclusions &gt; Add a folder</em>.
+            </p>
           </div>
         </div>
       </main>

@@ -9,6 +9,8 @@ RUN npm ci --omit=dev
 # --- Build ---
 FROM base AS builder
 WORKDIR /app
+ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
+ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=$NEXT_PUBLIC_TURNSTILE_SITE_KEY
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .

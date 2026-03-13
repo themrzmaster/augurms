@@ -8,7 +8,6 @@
     "start": "next start"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.72",
     "@codemirror/lang-javascript": "^6.2.3",
     "@uiw/react-codemirror": "^4.23.10",
     "bcryptjs": "^3.0.3",
@@ -16,6 +15,7 @@
     "konva": "^10.2.0",
     "mysql2": "^3.14.1",
     "next": "^15.3.4",
+    "openai": "^6.27.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-konva": "^19.2.3",

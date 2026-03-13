@@ -23,12 +23,14 @@ jobs:
             JWT_SECRET="${{ secrets.JWT_SECRET }}" \
             ADMIN_USER="${{ secrets.ADMIN_USER }}" \
             ADMIN_PASS_HASH="${{ secrets.ADMIN_PASS_HASH }}" \
+            OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}" \
+            TURNSTILE_SECRET_KEY="${{ secrets.TURNSTILE_SECRET_KEY }}" \
             --app augur-ms \
             --stage
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Deploy
-        run: flyctl deploy --remote-only
+        run: flyctl deploy --remote-only --build-arg NEXT_PUBLIC_TURNSTILE_SITE_KEY="${{ secrets.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
