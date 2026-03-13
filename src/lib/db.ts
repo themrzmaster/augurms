@@ -6,14 +6,28 @@ import { PATHS } from "./cosmic";
 let pool: mysql.Pool | null = null;
 
 function getDbConfig() {
+  // In production (Docker), use env vars directly; in dev, fall back to config.yaml
+  const host = process.env.DB_HOST;
+  const password = process.env.DB_PASS;
+
+  if (host) {
+    return {
+      host,
+      port: parseInt(process.env.DB_PORT || "3306"),
+      user: process.env.DB_USER || "root",
+      password: password || "",
+      database: process.env.DB_NAME || "cosmic",
+    };
+  }
+
   const configContent = readFileSync(PATHS.config, "utf-8");
   const config = parseYaml(configContent);
   const server = config.server;
   return {
-    host: process.env.DB_HOST || server.DB_HOST || "localhost",
+    host: server.DB_HOST || "localhost",
     port: 3307,
     user: server.DB_USER || "root",
-    password: server.DB_PASS || "",
+    password: password || server.DB_PASS || "",
     database: "cosmic",
   };
 }

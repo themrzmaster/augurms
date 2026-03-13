@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: "🏠" },
+  { href: "/dashboard", label: "Dashboard", icon: "🏠" },
   { href: "/maps", label: "Maps", icon: "🗺️" },
   { href: "/characters", label: "Characters", icon: "⚔️" },
   { href: "/items", label: "Items", icon: "🎒" },
@@ -26,7 +26,7 @@ export default function Sidebar() {
           ✦
         </span>
         <span className="text-xl font-bold tracking-wide text-text-primary">
-          Cosmic
+          AugurMS
         </span>
       </div>
 
@@ -36,10 +36,7 @@ export default function Sidebar() {
       {/* Navigation */}
       <nav className="mt-4 flex flex-1 flex-col gap-1 px-3">
         {NAV_ITEMS.map((item) => {
-          const isActive =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
+          const isActive = pathname.startsWith(item.href);
 
           return (
             <Link

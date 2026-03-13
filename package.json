@@ -11,6 +11,8 @@
     "@anthropic-ai/claude-agent-sdk": "^0.2.72",
     "@codemirror/lang-javascript": "^6.2.3",
     "@uiw/react-codemirror": "^4.23.10",
+    "bcryptjs": "^3.0.3",
+    "jose": "^6.2.1",
     "konva": "^10.2.0",
     "mysql2": "^3.14.1",
     "next": "^15.3.4",
@@ -22,6 +24,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.8",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",

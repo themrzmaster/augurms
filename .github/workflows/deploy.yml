@@ -1,0 +1,34 @@
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Set Fly.io secrets
+        run: |
+          flyctl secrets set \
+            DB_HOST="${{ secrets.DB_HOST }}" \
+            DB_PORT="${{ secrets.DB_PORT }}" \
+            DB_USER="${{ secrets.DB_USER }}" \
+            DB_PASS="${{ secrets.DB_PASS }}" \
+            DB_NAME="${{ secrets.DB_NAME }}" \
+            JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            ADMIN_USER="${{ secrets.ADMIN_USER }}" \
+            ADMIN_PASS_HASH="${{ secrets.ADMIN_PASS_HASH }}" \
+            --app augur-ms \
+            --stage
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Deploy
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
