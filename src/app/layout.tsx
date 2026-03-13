@@ -8,8 +8,14 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "AugurMS",
-  description: "MapleStory v83 private server powered by an AI Game Master",
+  title: "AugurMS - MapleStory v83 Guided by AI",
+  description: "A classic MapleStory v83 private server with an omniscient AI Game Master. The Augur watches, adapts, and reshapes the world in real time.",
+  icons: { icon: "/logo.png", apple: "/logo.png" },
+  openGraph: {
+    title: "AugurMS - MapleStory v83 Guided by AI",
+    description: "Something ancient watches over this world. A MapleStory v83 private server with an AI oracle that dynamically tunes rates, drops, and events.",
+    images: [{ url: "/logo.png", width: 1024, height: 1024 }],
+  },
 };
 
 export default function RootLayout({

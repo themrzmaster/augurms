@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -48,11 +49,9 @@ export default function LandingPage() {
       </div>
 
       {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-8 py-6">
-        <div className="flex items-center gap-2.5">
-          <span className="text-2xl text-accent-gold drop-shadow-[0_0_8px_rgba(245,197,66,0.4)]">
-            &#10022;
-          </span>
+      <nav className="relative z-10 flex items-center justify-between px-8 py-4">
+        <div className="flex items-center gap-2">
+          <Image src="/logo.png" alt="AugurMS" width={44} height={44} className="drop-shadow-[0_0_12px_rgba(245,197,66,0.3)]" />
           <span className="text-xl font-bold tracking-wide">AugurMS</span>
         </div>
         <div className="flex items-center gap-4">
@@ -73,6 +72,20 @@ export default function LandingPage() {
 
       {/* Hero */}
       <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 text-center">
+        {/* Logo */}
+        <div className="relative mb-6">
+          <div className="absolute inset-0 scale-150 rounded-full bg-accent-gold/[0.06] blur-3xl" />
+          <Image
+            src="/logo.png"
+            alt="AugurMS"
+            width={220}
+            height={220}
+            priority
+            className="relative drop-shadow-[0_0_40px_rgba(245,197,66,0.25)]"
+          />
+        </div>
+
+        {/* Status badge */}
         <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border px-4 py-1.5">
           <span
             className={`h-2 w-2 rounded-full ${
@@ -97,8 +110,9 @@ export default function LandingPage() {
         </h1>
 
         <p className="mt-6 max-w-xl text-lg leading-relaxed text-text-secondary">
-          A classic MapleStory experience with an AI Game Master that reads the
-          pulse of the server and tunes the world in real time. The Augur sees all.
+          Something ancient watches over this world. It reads every kill, every
+          trade, every quiet hour. It shifts the rules before you notice and
+          reshapes the game while you sleep. Welcome to the server that plays back.
         </p>
 
         {/* Rates */}
@@ -137,18 +151,18 @@ export default function LandingPage() {
         <div className="mt-20 grid max-w-4xl grid-cols-1 gap-6 sm:grid-cols-3">
           {[
             {
-              title: "AI Game Master",
-              desc: "An autonomous AI that monitors player activity and dynamically adjusts rates, events, and drops.",
+              title: "The Augur",
+              desc: "An omniscient AI oracle that watches player activity, economy, and progression \u2014 then autonomously tunes drop rates, EXP curves, and spawns events when the world needs them.",
               icon: "\uD83E\uDDE0",
             },
             {
               title: "Classic v83",
-              desc: "The beloved MapleStory experience. 4th job, PQs, bossing, and all the nostalgia.",
+              desc: "The golden era, preserved. 4th job, party quests, bossing \u2014 every mechanic you remember, running on a world that remembers you back.",
               icon: "\uD83C\uDF41",
             },
             {
-              title: "Active Development",
-              desc: "Constant updates, custom content, and a responsive dev team. Built with care.",
+              title: "Living World",
+              desc: "No two weeks play the same. The Augur shifts the economy, rebalances monsters, and introduces events no one predicted. The game is never solved.",
               icon: "\u26A1",
             },
           ].map((f) => (
