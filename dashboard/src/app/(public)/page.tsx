@@ -289,7 +289,7 @@ export default function LandingPage() {
                       <span className="text-accent-red">Patcher.exe</span>
                     </div>
                     <a
-                      href={"#"}
+                      href="https://github.com/P0nk/Cosmic-client/raw/main/MapleGlobal-v83-setup.exe"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-2 text-sm font-medium text-text-primary transition hover:bg-border"
@@ -311,13 +311,13 @@ export default function LandingPage() {
                       Download and run the launcher installer. It will auto-detect your MapleStory folder (or let you browse to it). The launcher <strong>automatically downloads and updates</strong> all game files &mdash; no manual file copying needed.
                     </p>
                     <a
-                      href={"#"}
+                      href="https://github.com/themrzmaster/augurms/releases/download/launcher-v1.0.1/AugurMS.Setup.1.0.1.exe"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 rounded-lg bg-accent-gold px-5 py-2.5 font-semibold text-bg-primary transition hover:bg-accent-gold/90 hover:shadow-[0_0_20px_rgba(245,197,66,0.3)]"
                     >
                       Download AugurMS Launcher
-                      <span className="text-sm opacity-70">(78 MB)</span>
+                      <span className="text-sm opacity-70">(.exe)</span>
                     </a>
                   </div>
                 </div>
@@ -359,7 +359,7 @@ export default function LandingPage() {
                       Download the original v83 installer and run it. Install to any folder (default: <code className="rounded bg-bg-primary/80 px-1.5 py-0.5 text-xs">C:\Nexon\MapleStory</code>).
                     </p>
                     <a
-                      href={"#"}
+                      href="https://github.com/P0nk/Cosmic-client/raw/main/MapleGlobal-v83-setup.exe"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-2 text-sm font-medium text-text-primary transition hover:bg-border"
@@ -400,13 +400,13 @@ export default function LandingPage() {
                       Download the client pack and extract <strong>everything</strong> (AugurMS.exe + all .wz files) into your MapleStory install folder. Replace existing .wz files when prompted.
                     </p>
                     <a
-                      href={"#"}
+                      href="https://github.com/themrzmaster/augurms/releases/tag/client-v1.0.1"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 rounded-lg bg-accent-blue px-5 py-2.5 font-semibold text-white transition hover:bg-accent-blue/90 hover:shadow-[0_0_20px_rgba(96,165,250,0.3)]"
                     >
-                      Download AugurMS Client
-                      <span className="text-sm opacity-70">(828 MB)</span>
+                      Download AugurMS Client Files
+                      <span className="text-sm opacity-70">(~1 GB)</span>
                     </a>
                   </div>
                 </div>
