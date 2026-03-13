@@ -3,7 +3,16 @@ import { query as dbQuery, execute } from "@/lib/db";
 import type { GMSession, GMLogEntry } from "./types";
 
 const BASE = process.env.COSMIC_DASHBOARD_URL || "http://localhost:3000";
-const MODEL = process.env.GM_MODEL || "moonshotai/kimi-k2.5";
+const DEFAULT_MODEL = "moonshotai/kimi-k2.5";
+
+async function getModel(): Promise<string> {
+  try {
+    const [row] = await dbQuery("SELECT model FROM gm_schedule WHERE id = 1");
+    return (row as any)?.model || DEFAULT_MODEL;
+  } catch {
+    return DEFAULT_MODEL;
+  }
+}
 
 const openrouter = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
@@ -500,10 +509,12 @@ export async function runGameMaster(
   let lastTextBeforeToolCall = "";
   const MAX_TURNS = 25;
 
+  const model = await getModel();
+
   try {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       const response = await openrouter.chat.completions.create({
-        model: MODEL,
+        model,
         messages,
         tools: toolSchemas,
         temperature: 0.7,

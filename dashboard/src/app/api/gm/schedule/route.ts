@@ -16,6 +16,7 @@ export async function GET() {
     return NextResponse.json({
       enabled: !!s.enabled,
       intervalHours: s.interval_hours,
+      model: s.model || "moonshotai/kimi-k2.5",
       lastRun: s.last_run,
       nextRun: s.next_run,
       updatedAt: s.updated_at,
@@ -28,7 +29,7 @@ export async function GET() {
 // PUT — Update schedule config
 export async function PUT(request: NextRequest) {
   try {
-    const { enabled, intervalHours } = await request.json();
+    const { enabled, intervalHours, model } = await request.json();
 
     const updates: string[] = [];
     const params: any[] = [];
@@ -41,6 +42,10 @@ export async function PUT(request: NextRequest) {
       const hours = Math.max(1, Math.min(24, intervalHours));
       updates.push("interval_hours = ?");
       params.push(hours);
+    }
+    if (model !== undefined) {
+      updates.push("model = ?");
+      params.push(model);
     }
 
     if (updates.length === 0) {
@@ -67,6 +72,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({
       enabled: !!s.enabled,
       intervalHours: s.interval_hours,
+      model: s.model || "moonshotai/kimi-k2.5",
       lastRun: s.last_run,
       nextRun: s.next_run,
       updatedAt: s.updated_at,

@@ -32,6 +32,7 @@ interface SessionInfo {
 interface ScheduleConfig {
   enabled: boolean;
   intervalHours: number;
+  model: string;
   lastRun: string | null;
   nextRun: string | null;
 }
@@ -276,6 +277,15 @@ function SchedulePanel() {
     setSchedule(await res.json());
   };
 
+  const updateModel = async (model: string) => {
+    const res = await fetch("/api/gm/schedule", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model }),
+    });
+    setSchedule(await res.json());
+  };
+
   if (loading || !schedule) return null;
 
   return (
@@ -301,6 +311,25 @@ function SchedulePanel() {
             }`}
           />
         </button>
+      </div>
+
+      {/* Model selector - always visible */}
+      <div className="mt-3">
+        <label className="text-[11px] font-medium text-text-muted block mb-1">AI Model</label>
+        <select
+          value={schedule.model}
+          onChange={(e) => updateModel(e.target.value)}
+          className="w-full rounded-lg border border-border bg-bg-primary px-3 py-1.5 text-xs text-text-primary"
+        >
+          <option value="moonshotai/kimi-k2.5">Kimi K2.5 (Moonshot)</option>
+          <option value="anthropic/claude-sonnet-4">Claude Sonnet 4</option>
+          <option value="anthropic/claude-haiku-4">Claude Haiku 4</option>
+          <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
+          <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
+          <option value="openai/gpt-4.1-mini">GPT-4.1 Mini</option>
+          <option value="openai/gpt-4.1">GPT-4.1</option>
+          <option value="deepseek/deepseek-chat-v3">DeepSeek V3</option>
+        </select>
       </div>
 
       {schedule.enabled && (

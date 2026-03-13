@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createConnection, Socket } from "net";
+import { query } from "@/lib/db";
 
 const GAME_HOST = process.env.GAME_SERVER_HOST || "augur-ms-game.internal";
 const LOGIN_PORT = 8484;
@@ -19,7 +20,11 @@ function tcpCheck(host: string, port: number, timeout = 5000): Promise<boolean> 
 export async function GET() {
   try {
     const online = await tcpCheck(GAME_HOST, LOGIN_PORT);
-    const gmModel = process.env.GM_MODEL || "moonshotai/kimi-k2.5";
+    let gmModel = "moonshotai/kimi-k2.5";
+    try {
+      const [row] = await query("SELECT model FROM gm_schedule WHERE id = 1");
+      if ((row as any)?.model) gmModel = (row as any).model;
+    } catch {}
     return NextResponse.json({
       status: online ? "running" : "stopped",
       gmModel,
