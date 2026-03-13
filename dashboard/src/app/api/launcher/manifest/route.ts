@@ -3,10 +3,13 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 
-// In production: check volume first (/cosmic), then bundled copy
+// Read: check volume first (dynamic updates), then bundled copy
+// Write: always write to volume so updates persist across deploys
 const VOLUME_MANIFEST = "/cosmic/launcher-manifest.json";
 const BUNDLED_MANIFEST = path.join(process.cwd(), "launcher-manifest.json");
-const MANIFEST_PATH = fs.existsSync(VOLUME_MANIFEST) ? VOLUME_MANIFEST : BUNDLED_MANIFEST;
+const READ_PATH = fs.existsSync(VOLUME_MANIFEST) ? VOLUME_MANIFEST : BUNDLED_MANIFEST;
+const WRITE_PATH = VOLUME_MANIFEST; // always write to volume
+const MANIFEST_PATH = READ_PATH;
 
 // Files the launcher tracks for updates
 const TRACKED_FILES = [
@@ -72,7 +75,7 @@ export async function POST(request: Request) {
 
     // Option 1: Full manifest replacement
     if (body.manifest) {
-      fs.writeFileSync(MANIFEST_PATH, JSON.stringify(body.manifest, null, 2));
+      fs.writeFileSync(WRITE_PATH, JSON.stringify(body.manifest, null, 2));
       return NextResponse.json({ success: true, manifest: body.manifest });
     }
 
@@ -108,7 +111,7 @@ export async function POST(request: Request) {
         downloadBase: body.downloadBase || "",
       };
 
-      fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2));
+      fs.writeFileSync(WRITE_PATH, JSON.stringify(manifest, null, 2));
       return NextResponse.json({ success: true, manifest });
     }
 
@@ -125,7 +128,7 @@ export async function POST(request: Request) {
       }
       manifest.updatedAt = new Date().toISOString();
       if (body.version) manifest.version = body.version;
-      fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2));
+      fs.writeFileSync(WRITE_PATH, JSON.stringify(manifest, null, 2));
       return NextResponse.json({ success: true, manifest });
     }
 

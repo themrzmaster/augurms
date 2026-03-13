@@ -199,11 +199,40 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
   take_snapshot: async () =>
     JSON.stringify(await api("/api/gm/snapshot", { method: "POST" })),
 
-  publish_client_update: async ({ version, message }) =>
-    JSON.stringify(await api("/api/launcher/manifest", {
+  publish_client_update: async ({ version, message, files }) => {
+    // Read current manifest, bump version, optionally update file entries
+    const current = await api("/api/launcher/manifest");
+    const manifest = { ...current };
+    manifest.version = version || manifest.version;
+    manifest.updatedAt = new Date().toISOString();
+
+    // If specific files changed, update their hashes/sizes
+    if (files && Array.isArray(files)) {
+      for (const update of files) {
+        const entry = manifest.files?.find((f: any) => f.name === update.name);
+        if (entry) {
+          if (update.hash) entry.hash = update.hash;
+          if (update.size) entry.size = update.size;
+        }
+      }
+    }
+
+    // Upload changed files to R2 if available
+    if (files && Array.isArray(files)) {
+      const uploadResult = await api("/api/launcher/upload", {
+        method: "POST",
+        body: JSON.stringify({ files: files.filter((f: any) => f.path) }),
+      });
+      if (uploadResult.error) return JSON.stringify({ error: uploadResult.error });
+    }
+
+    // Save manifest to volume for immediate serving
+    const result = await api("/api/launcher/manifest", {
       method: "POST",
-      body: JSON.stringify({ version, message }),
-    })),
+      body: JSON.stringify({ manifest }),
+    });
+    return JSON.stringify({ ...result, message: message || "Client update published" });
+  },
 };
 
 // ---- OpenAI-format tool schemas ----
@@ -249,7 +278,7 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
   { type: "function", function: { name: "update_goal", description: "Update a goal's status or current value.", parameters: { type: "object", properties: { id: { type: "number" }, status: { type: "string", enum: ["active", "achieved", "abandoned"] }, currentValue: { type: "number" }, targetValue: { type: "number" } }, required: ["id"] } } },
   { type: "function", function: { name: "get_trends", description: "Get computed trend analysis over a time period.", parameters: { type: "object", properties: { hours: { type: "number" } } } } },
   { type: "function", function: { name: "take_snapshot", description: "Take a snapshot of the current game state.", parameters: { type: "object", properties: {} } } },
-  { type: "function", function: { name: "publish_client_update", description: "Publish a client update notification. Use when you've made changes that require players to update (WZ file changes, client patches). Players' launchers will auto-download on next launch.", parameters: { type: "object", properties: { version: { type: "string", description: "New version string (e.g. 1.1.0)" }, message: { type: "string", description: "What changed for players" } }, required: ["version", "message"] } } },
+  { type: "function", function: { name: "publish_client_update", description: "Publish a client update. Bumps manifest version so launchers detect changes. Most GM changes (drops, shops, spawns, rates) are DB-only and do NOT need this. Only use for WZ-level changes (new items/mobs) or client patches.", parameters: { type: "object", properties: { version: { type: "string", description: "New version string (e.g. 1.1.0)" }, message: { type: "string", description: "What changed for players" }, files: { type: "array", description: "Files that changed. Include name and new hash/size.", items: { type: "object", properties: { name: { type: "string" }, hash: { type: "string" }, size: { type: "number" } } } } }, required: ["version", "message"] } } },
 ];
 
 // ---- Build historical context for system prompt ----
