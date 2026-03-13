@@ -35,14 +35,10 @@ RUN yum install -y tar gzip && yum clean all
 # Host the server in a location that won't have permissions issues.
 WORKDIR /opt/server
 # Download WZ files from R2 (30MB compressed, 573MB extracted)
+# Cache bust: change this value to force re-download of WZ files
+ARG WZ_VERSION=2
 ARG WZ_URL=https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/server-wz.tar.gz
-RUN curl -fsSL "$WZ_URL" -o /tmp/wz.tar.gz \
-    && echo "Downloaded $(wc -c < /tmp/wz.tar.gz) bytes" \
-    && tar xzf /tmp/wz.tar.gz \
-    && echo "WZ dirs: $(ls wz/ | head -5)" \
-    && head -c 100 wz/Mob.wz/0100100.img.xml \
-    && echo "" \
-    && rm /tmp/wz.tar.gz
+RUN curl -fsSL "$WZ_URL" -o /tmp/wz.tar.gz && tar xzf /tmp/wz.tar.gz && rm /tmp/wz.tar.gz
 # Copy the JAR we build earlier.
 COPY --from=jar /opt/cosmic/target/Cosmic.jar ./Server.jar
 # Scripts are sourced on server startup, so you can mount over them for quicker redeploy.
