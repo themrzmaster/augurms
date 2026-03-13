@@ -3,17 +3,17 @@ import { query } from "@/lib/db";
 
 interface GMSession {
   id: string;
-  trigger: string;
+  trigger_type: string;
   status: string;
   summary: string | null;
-  created_at: string;
+  started_at: string;
 }
 
 interface GMAction {
   tool_name: string;
-  input: string;
+  tool_input: string;
   reasoning: string | null;
-  created_at: string;
+  executed_at: string;
 }
 
 // Map GM tool names to news categories
@@ -28,18 +28,18 @@ export async function GET() {
   try {
     // Get recent GM AI sessions with summaries
     const sessions = await query<GMSession>(
-      `SELECT id, \`trigger\`, status, summary, created_at
+      `SELECT id, trigger_type, status, summary, started_at
        FROM gm_sessions
        WHERE status = 'complete' AND summary IS NOT NULL
-       ORDER BY created_at DESC
+       ORDER BY started_at DESC
        LIMIT 10`
     ).catch(() => [] as GMSession[]);
 
     // Get recent GM actions (write actions that changed the game)
     const actions = await query<GMAction>(
-      `SELECT tool_name, input, reasoning, created_at
+      `SELECT tool_name, tool_input, reasoning, executed_at
        FROM gm_actions
-       ORDER BY created_at DESC
+       ORDER BY executed_at DESC
        LIMIT 20`
     ).catch(() => [] as GMAction[]);
 
@@ -55,7 +55,7 @@ export async function GET() {
         news.push({
           type: "update",
           text,
-          date: s.created_at,
+          date: s.started_at,
         });
       }
     }
@@ -65,11 +65,11 @@ export async function GET() {
       const type = categorize(a.tool_name);
       const text = a.reasoning || `GM used ${a.tool_name.replace(/_/g, " ")}`;
       // Avoid duplicating session summaries
-      if (!news.some((n) => n.date === a.created_at)) {
+      if (!news.some((n) => n.date === a.executed_at)) {
         news.push({
           type,
           text: text.length > 200 ? text.substring(0, 200) + "..." : text,
-          date: a.created_at,
+          date: a.executed_at,
         });
       }
     }
