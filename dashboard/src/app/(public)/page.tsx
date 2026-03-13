@@ -4,10 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-interface ServerStatus {
-  docker?: { maplestory?: string };
-}
-
 function getTimeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -24,12 +20,14 @@ export default function LandingPage() {
   const [rates, setRates] = useState({ exp: "1x", drop: "1x", meso: "1x" });
   const [installTab, setInstallTab] = useState<"launcher" | "manual">("launcher");
   const [augurLog, setAugurLog] = useState<Array<{ type: string; text: string; date: string }>>([]);
+  const [gmModel, setGmModel] = useState("");
 
   useEffect(() => {
     fetch("/api/server")
       .then((r) => r.json())
-      .then((data: ServerStatus) => {
-        setStatus(data.docker?.maplestory === "running" ? "online" : "offline");
+      .then((data: any) => {
+        setStatus(data.status === "running" ? "online" : "offline");
+        if (data.gmModel) setGmModel(data.gmModel);
       })
       .catch(() => setStatus("offline"));
 
@@ -46,12 +44,15 @@ export default function LandingPage() {
         return r.json();
       })
       .then((data) => {
-        if (data?.config?.server) {
-          const s = data.config.server;
+        // Try world-level rates first (worlds[0]), then server-level
+        const world = data?.worlds?.[0];
+        const server = data?.config?.server || data?.server;
+        const src = world || server;
+        if (src) {
           setRates({
-            exp: (s.EXP_RATE || 1) + "x",
-            drop: (s.DROP_RATE || 1) + "x",
-            meso: (s.MESO_RATE || 1) + "x",
+            exp: (src.exp_rate || src.EXP_RATE || 1) + "x",
+            drop: (src.drop_rate || src.DROP_RATE || 1) + "x",
+            meso: (src.meso_rate || src.MESO_RATE || 1) + "x",
           });
         }
       })
@@ -171,7 +172,7 @@ export default function LandingPage() {
           {[
             {
               title: "The Augur",
-              desc: "An omniscient AI oracle that watches player activity, economy, and progression \u2014 then autonomously tunes drop rates, EXP curves, and spawns events when the world needs them.",
+              desc: `An omniscient AI oracle that watches player activity, economy, and progression \u2014 then autonomously tunes drop rates, EXP curves, and spawns events when the world needs them.${gmModel ? `\n\nCurrently powered by ${gmModel.split("/").pop()}.` : ""}`,
               icon: "\uD83E\uDDE0",
             },
             {

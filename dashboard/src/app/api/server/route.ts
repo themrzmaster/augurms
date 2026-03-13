@@ -19,8 +19,10 @@ function tcpCheck(host: string, port: number, timeout = 5000): Promise<boolean> 
 export async function GET() {
   try {
     const online = await tcpCheck(GAME_HOST, LOGIN_PORT);
+    const gmModel = process.env.GM_MODEL || "moonshotai/kimi-k2.5";
     return NextResponse.json({
       status: online ? "running" : "stopped",
+      gmModel,
     });
   } catch {
     return NextResponse.json({
