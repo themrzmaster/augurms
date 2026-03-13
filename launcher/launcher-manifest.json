@@ -1,85 +1,85 @@
 {
-  "version": "1.0.2",
-  "updatedAt": "2026-03-13T18:50:00Z",
+  "version": "1.0.3",
+  "updatedAt": "2026-03-13T19:35:00Z",
   "files": [
     {
       "name": "AugurMS.exe",
       "hash": "d4be83197bad0ff5f7a6b84bbb80ea006e6350e644f0b2ee1966ef5a81f925dc",
       "size": 9920523,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/AugurMS.exe"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/AugurMS.exe"
     },
     {
       "name": "Character.wz",
       "hash": "ed787285951c1388f3cf2a515999ab1c45307265ba9b9d01f2ba3f75f81c371c",
       "size": 206267331,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/Character.wz"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/Character.wz"
     },
     {
       "name": "Etc.wz",
       "hash": "94c5bad3e4afa1a4797be9bacb916258d052d2112236f002bc913e57b2cdd2c9",
       "size": 1803008,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/Etc.wz"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/Etc.wz"
     },
     {
       "name": "Item.wz",
       "hash": "33d7e2d8416a6523935e9fc933107ca3b66f6dde869667ffb0551746a36c5e44",
       "size": 18397440,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/Item.wz"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/Item.wz"
     },
     {
       "name": "List.wz",
       "hash": "7f9b67d010d8901f81b541b4c611f2ffa0b166001e4762d44fedab6ab7dfad8b",
       "size": 13336,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/List.wz"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/List.wz"
     },
     {
       "name": "Map.wz",
       "hash": "b9b1586af0132eed553b992ed514221a7ed9d39bc33bcbd706fb8cd0e4eeaa51",
       "size": 81945907,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/Map.wz"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/Map.wz"
     },
     {
       "name": "Mob.wz",
       "hash": "bec9d9e15c1d16e7b9cce1a900938363411fbfd44c52be7db86735a2bcb210f1",
       "size": 479990067,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/Mob.wz"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/Mob.wz"
     },
     {
       "name": "Npc.wz",
       "hash": "2992910ac5f65fa3d1ca4b2469fa4105f948f6ceb4a6c47ee6953be9d04dee17",
       "size": 53498512,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/Npc.wz"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/Npc.wz"
     },
     {
       "name": "Quest.wz",
       "hash": "41e1c0cbfeea1acb735df91794c802143a4bfd25db17bfe774039211aaa176e8",
       "size": 5993452,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/Quest.wz"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/Quest.wz"
     },
     {
       "name": "Reactor.wz",
       "hash": "9f10fc59d51d355750e55e3d252003b8f325f03ef13f2e6db123056bbd84f66d",
       "size": 54348491,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/Reactor.wz"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/Reactor.wz"
     },
     {
       "name": "Skill.wz",
       "hash": "5830382fbf1515695559b1cd9366f6fba705a936c3244927555b28c5756c98d5",
       "size": 76505373,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/Skill.wz"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/Skill.wz"
     },
     {
       "name": "String.wz",
       "hash": "9437deb8ce481dae4909097ebfb366d24baccd73d55d3ed00fa3198603cae499",
       "size": 3561285,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/String.wz"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/String.wz"
     },
     {
       "name": "UI.wz",
       "hash": "bebd65f77f167cd5484423842e3000e5ba26ccb51c6463f355cad404041d4053",
       "size": 28315281,
-      "url": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/UI.wz"
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/UI.wz"
     }
   ],
-  "downloadBase": "https://github.com/themrzmaster/augurms/releases/download/client-v1.0.1/"
+  "downloadBase": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/"
 }

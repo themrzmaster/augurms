@@ -180,24 +180,49 @@ ipcMain.handle("launcher:downloadUpdates", async (_, updates) => {
     const file = updates[i];
     const destPath = path.join(gamePath, file.name);
 
-    mainWindow.webContents.send("download:progress", {
-      file: file.name,
-      index: i,
-      total: updates.length,
-      percent: 0,
-    });
-
-    try {
-      await downloadFile(file.url, destPath, (percent) => {
-        mainWindow.webContents.send("download:progress", {
-          file: file.name,
-          index: i,
-          total: updates.length,
-          percent,
-        });
+    const sendProgress = (percent, status) => {
+      mainWindow.webContents.send("download:progress", {
+        file: file.name,
+        index: i,
+        total: updates.length,
+        percent,
+        status,
       });
-    } catch (err) {
-      return { success: false, error: `Failed to download ${file.name}: ${err.message}` };
+    };
+
+    const MAX_RETRIES = 3;
+    let success = false;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        sendProgress(0, attempt > 1 ? `Retry ${attempt}/${MAX_RETRIES}` : undefined);
+
+        await downloadFile(file.url, destPath, (percent) => sendProgress(percent));
+
+        // Verify file size
+        const stats = fs.statSync(destPath);
+        if (file.size && stats.size !== file.size) {
+          throw new Error(`Size mismatch: got ${stats.size}, expected ${file.size}`);
+        }
+
+        // Verify hash
+        if (file.hash) {
+          sendProgress(100, "Verifying...");
+          const localHash = await hashFile(destPath);
+          if (localHash !== file.hash) {
+            throw new Error(`Hash mismatch after download`);
+          }
+        }
+
+        success = true;
+        break;
+      } catch (err) {
+        if (attempt === MAX_RETRIES) {
+          return { success: false, error: `Failed to download ${file.name}: ${err.message}` };
+        }
+        // Clean up partial file before retry
+        try { fs.unlinkSync(destPath); } catch {}
+      }
     }
   }
 
