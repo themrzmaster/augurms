@@ -78,7 +78,7 @@ async function uploadToR2(
         "x-amz-date": amzDate,
         "Content-Length": String(body.length),
       },
-      body,
+      body: new Uint8Array(body),
     });
 
     if (!res.ok) {
