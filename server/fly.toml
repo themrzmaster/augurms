@@ -1,0 +1,51 @@
+app = "augur-ms-game"
+primary_region = "iad"
+
+[build]
+
+[env]
+  DB_HOST = "augur-ms-db.internal"
+
+# Login server
+[[services]]
+  internal_port = 8484
+  protocol = "tcp"
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 8484
+
+  [[services.tcp_checks]]
+    interval = "30s"
+    timeout = "5s"
+
+# Channel 1
+[[services]]
+  internal_port = 7575
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 7575
+
+# Channel 2
+[[services]]
+  internal_port = 7576
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 7576
+
+# Channel 3
+[[services]]
+  internal_port = 7577
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 7577
+
+[[vm]]
+  memory = "2gb"
+  cpu_kind = "shared"
+  cpus = 2

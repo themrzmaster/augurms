@@ -1,0 +1,328 @@
+worlds:
+  - flag: 0
+    server_message: "[Cosmic Spring Bloom] Strange mushrooms have bloomed across the land! Hunt them down for rare drops - Elixirs, Power Elixirs, and STR Scrolls! Event active at Snail Hunting Ground II and Henesys Hunting Ground II!"
+    event_message: "[Cosmic Spring Bloom] Strange mushrooms have bloomed across the land! Hunt them down for rare drops - Elixirs, Power Elixirs, and STR Scrolls! Event active at Snail Hunting Ground II and Henesys Hunting Ground II!"
+    why_am_i_recommended: Welcome to Scania!
+    channels: 3
+    exp_rate: 10
+    meso_rate: 10
+    drop_rate: 10
+    boss_drop_rate: 10
+    quest_rate: 5
+    fishing_rate: 10
+    travel_rate: 10
+  - flag: 0
+    server_message: Welcome to Bera!
+    event_message: Bera!
+    why_am_i_recommended: Welcome to Bera!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Broa!
+    event_message: Broa!
+    why_am_i_recommended: Welcome to Broa!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Windia!
+    event_message: Windia!
+    why_am_i_recommended: Welcome to Windia!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Khaini!
+    event_message: Khaini!
+    why_am_i_recommended: Welcome to Khaini!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Bellocan!
+    event_message: Bellocan!
+    why_am_i_recommended: Welcome to Bellocan!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Mardia!
+    event_message: Mardia!
+    why_am_i_recommended: Welcome to Mardia!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Kradia!
+    event_message: Kradia!
+    why_am_i_recommended: Welcome to Kradia!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Yellonde!
+    event_message: Yellonde!
+    why_am_i_recommended: Welcome to Yellonde!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Demethos!
+    event_message: Demethos!
+    why_am_i_recommended: Welcome to Demethos!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Galicia!
+    event_message: Galicia!
+    why_am_i_recommended: Welcome to Galicia!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Kastia!
+    event_message: Kastia!
+    why_am_i_recommended: Welcome to Kastia!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Judis!
+    event_message: Judis!
+    why_am_i_recommended: Welcome to Judis!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Arcenia!
+    event_message: Arcenia!
+    why_am_i_recommended: Welcome to Arcenia!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Plana!
+    event_message: Plana!
+    why_am_i_recommended: Welcome to Plana!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to El Nido!
+    event_message: El Nido!
+    why_am_i_recommended: Welcome to El Nido!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Kalluna!
+    event_message: Kalluna!
+    why_am_i_recommended: Welcome to Kalluna!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Stius!
+    event_message: Stius!
+    why_am_i_recommended: Welcome to Stius!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Croa!
+    event_message: Croa!
+    why_am_i_recommended: Welcome to Croa!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Zenith!
+    event_message: Zenith!
+    why_am_i_recommended: Welcome to Zenith!
+    channels: 3
+  - flag: 0
+    server_message: Welcome to Medere!
+    event_message: Medere!
+    why_am_i_recommended: Welcome to Medere!
+    channels: 3
+server:
+  DB_URL_FORMAT: jdbc:mysql://%s:3306/cosmic
+  DB_HOST: localhost
+  DB_USER: root
+  DB_PASS: ""
+  INIT_CONNECTION_POOL_TIMEOUT: 90
+  WORLDS: 1
+  WLDLIST_SIZE: 21
+  CHANNEL_SIZE: 20
+  CHANNEL_LOAD: 100
+  CHANNEL_LOCKS: 20
+  RESPAWN_INTERVAL: 10000
+  PURGING_INTERVAL: 300000
+  RANKING_INTERVAL: 3600000
+  COUPON_INTERVAL: 3600000
+  UPDATE_INTERVAL: 777
+  ENABLE_PIC: true
+  ENABLE_PIN: true
+  BYPASS_PIC_EXPIRATION: 20
+  BYPASS_PIN_EXPIRATION: 15
+  AUTOMATIC_REGISTER: true
+  BCRYPT_MIGRATION: true
+  COLLECTIVE_CHARSLOT: false
+  DETERRED_MULTICLIENT: false
+  MAX_ALLOWED_ACCOUNT_HWID: 10
+  MAX_ACCOUNT_LOGIN_ATTEMPT: 15
+  LOGIN_ATTEMPT_DURATION: 120
+  HOST: 192.168.0.104
+  LANHOST: 192.168.0.104
+  LOCALHOST: 127.0.0.1
+  GMSERVER: false
+  SHUTDOWNHOOK: true
+  USE_CUSTOM_KEYSET: false
+  USE_DEBUG: false
+  USE_DEBUG_SHOW_INFO_EQPEXP: false
+  USE_DEBUG_SHOW_RCVD_PACKET: false
+  USE_DEBUG_SHOW_RCVD_MVLIFE: false
+  USE_DEBUG_SHOW_PACKET: false
+  USE_SUPPLY_RATE_COUPONS: true
+  USE_IP_VALIDATION: false
+  USE_CHARACTER_ACCOUNT_CHECK: false
+  USE_MAXRANGE: true
+  USE_MAXRANGE_ECHO_OF_HERO: true
+  USE_MTS: false
+  USE_CPQ: true
+  USE_AUTOHIDE_GM: true
+  USE_FIXED_RATIO_HPMP_UPDATE: false
+  USE_FAMILY_SYSTEM: true
+  USE_DUEY: true
+  USE_RANDOMIZE_HPMP_GAIN: true
+  USE_STORAGE_ITEM_SORT: true
+  USE_ITEM_SORT: true
+  USE_ITEM_SORT_BY_NAME: false
+  USE_PARTY_FOR_STARTERS: false
+  USE_AUTOASSIGN_STARTERS_AP: true
+  USE_AUTOASSIGN_SECONDARY_CAP: true
+  USE_STARTING_AP_4: false
+  USE_AUTOBAN: false
+  USE_AUTOBAN_LOG: true
+  USE_EXP_GAIN_LOG: false
+  USE_AUTOSAVE: true
+  USE_SERVER_AUTOASSIGNER: false
+  USE_REFRESH_RANK_MOVE: true
+  USE_ENFORCE_ADMIN_ACCOUNT: false
+  USE_ENFORCE_NOVICE_EXPRATE: false
+  USE_ENFORCE_HPMP_SWAP: false
+  USE_ENFORCE_MOB_LEVEL_RANGE: true
+  USE_ENFORCE_JOB_LEVEL_RANGE: false
+  USE_ENFORCE_JOB_SP_RANGE: false
+  USE_ENFORCE_ITEM_SUGGESTION: false
+  USE_ENFORCE_UNMERCHABLE_CASH: true
+  USE_ENFORCE_UNMERCHABLE_PET: true
+  USE_ENFORCE_MERCHANT_SAVE: true
+  USE_ENFORCE_MDOOR_POSITION: false
+  USE_SPAWN_CLEAN_MDOOR: false
+  USE_SPAWN_RELEVANT_LOOT: true
+  USE_ERASE_PERMIT_ON_OPENSHOP: true
+  USE_ERASE_UNTRADEABLE_DROP: true
+  USE_ERASE_PET_ON_EXPIRATION: false
+  USE_BUFF_MOST_SIGNIFICANT: true
+  USE_BUFF_EVERLASTING: false
+  USE_MULTIPLE_SAME_EQUIP_DROP: true
+  USE_ENABLE_FULL_RESPAWN: false
+  USE_ENABLE_CHAT_LOG: false
+  USE_MAP_OWNERSHIP_SYSTEM: false
+  USE_FISHING_SYSTEM: false
+  USE_NPCS_SCRIPTABLE: true
+  USE_OLD_GMS_STYLED_PQ_NPCS: true
+  USE_ENABLE_SOLO_EXPEDITIONS: false
+  USE_ENABLE_DAILY_EXPEDITIONS: false
+  USE_ENABLE_RECALL_EVENT: false
+  USE_ANNOUNCE_SHOPITEMSOLD: false
+  USE_ANNOUNCE_CHANGEJOB: false
+  USE_ANNOUNCE_NX_COUPON_LOOT: false
+  USE_JOINT_CASHSHOP_INVENTORY: false
+  USE_CLEAR_OUTDATED_COUPONS: true
+  ALLOW_CASHSHOP_NAME_CHANGE: true
+  ALLOW_CASHSHOP_WORLD_TRANSFER: true
+  USE_MAKER_PERMISSIVE_ATKUP: false
+  USE_MAKER_FEE_HEURISTICS: true
+  BLOCK_GENERATE_CASH_ITEM: false
+  USE_WHOLE_SERVER_RANKING: false
+  EQUIP_EXP_RATE: 1
+  PQ_BONUS_EXP_RATE: 0.5
+  EXP_SPLIT_LEVEL_INTERVAL: 5
+  EXP_SPLIT_LEECH_INTERVAL: 5
+  EXP_SPLIT_MVP_MOD: 0.2
+  EXP_SPLIT_COMMON_MOD: 0.8
+  PARTY_BONUS_EXP_RATE: 1
+  TIMEZONE: GMT
+  CHARSET: US-ASCII
+  USE_DISPLAY_NUMBERS_WITH_COMMA: true
+  USE_UNITPRICE_WITH_COMMA: true
+  MAX_MONITORED_BUFFSTATS: 5
+  MAX_AP: 32767
+  MAX_EVENT_LEVELS: 8
+  BLOCK_NPC_RACE_CONDT: 500
+  TOT_MOB_QUEST_REQUIREMENT: 0
+  MOB_REACTOR_REFRESH_TIME: 0
+  PARTY_SEARCH_REENTRY_LIMIT: 10
+  NAME_CHANGE_COOLDOWN: 2592000000
+  WORLD_TRANSFER_COOLDOWN: 2592000000
+  INSTANT_NAME_CHANGE: false
+  ITEM_EXPIRE_TIME: 180000
+  KITE_EXPIRE_TIME: 3600000
+  ITEM_MONITOR_TIME: 300000
+  LOCK_MONITOR_TIME: 30000
+  ITEM_EXPIRE_CHECK: 10000
+  ITEM_LIMIT_ON_MAP: 200
+  MAP_VISITED_SIZE: 5
+  MAP_DAMAGE_OVERTIME_INTERVAL: 2500
+  MAP_DAMAGE_OVERTIME_COUNT: 2
+  MOB_STATUS_MONITOR_PROC: 200
+  MOB_STATUS_MONITOR_LIFE: 84
+  MOB_STATUS_AGGRO_PERSISTENCE: 2
+  MOB_STATUS_AGGRO_INTERVAL: 5000
+  USE_AUTOAGGRO_NEARBY: false
+  USE_PERFECT_GM_SCROLL: true
+  USE_PERFECT_SCROLLING: false
+  USE_ENHANCED_CHSCROLL: false
+  USE_ENHANCED_CRAFTING: false
+  SCROLL_CHANCE_ROLLS: 1
+  CHSCROLL_STAT_RATE: 1
+  CHSCROLL_STAT_RANGE: 5
+  USE_ULTRA_NIMBLE_FEET: false
+  USE_ULTRA_RECOVERY: false
+  USE_ULTRA_THREE_SNAILS: false
+  USE_FULL_ARAN_SKILLSET: false
+  USE_FAST_REUSE_HERO_WILL: false
+  USE_ANTI_IMMUNITY_CRASH: false
+  USE_UNDISPEL_HOLY_SHIELD: false
+  USE_FULL_HOLY_SYMBOL: false
+  USE_ADD_SLOTS_BY_LEVEL: false
+  USE_ADD_RATES_BY_LEVEL: false
+  USE_STACK_COUPON_RATES: false
+  USE_PERFECT_PITCH: false
+  USE_QUEST_RATE: false
+  QUEST_POINT_REPEATABLE_INTERVAL: 25
+  QUEST_POINT_REQUIREMENT: 0
+  QUEST_POINT_PER_QUEST_COMPLETE: 0
+  QUEST_POINT_PER_EVENT_CLEAR: 0
+  CREATE_GUILD_MIN_PARTNERS: 6
+  CREATE_GUILD_COST: 1500000
+  CHANGE_EMBLEM_COST: 5000000
+  EXPAND_GUILD_BASE_COST: 500000
+  EXPAND_GUILD_TIER_COST: 1000000
+  EXPAND_GUILD_MAX_COST: 5000000
+  FAMILY_REP_PER_KILL: 4
+  FAMILY_REP_PER_BOSS_KILL: 20
+  FAMILY_REP_PER_LEVELUP: 200
+  FAMILY_MAX_GENERATIONS: 1000
+  USE_EQUIPMNT_LVLUP_SLOTS: false
+  USE_EQUIPMNT_LVLUP_POWER: false
+  USE_EQUIPMNT_LVLUP_CASH: false
+  MAX_EQUIPMNT_LVLUP_STAT_UP: 10000
+  MAX_EQUIPMNT_STAT: 32767
+  USE_EQUIPMNT_LVLUP: 1
+  USE_CHAIR_EXTRAHEAL: false
+  CHAIR_EXTRA_HEAL_MULTIPLIER: 10
+  CHAIR_EXTRA_HEAL_MAX_DELAY: 21
+  PLAYERNPC_INITIAL_X: 262
+  PLAYERNPC_INITIAL_Y: 262
+  PLAYERNPC_AREA_X: 320
+  PLAYERNPC_AREA_Y: 160
+  PLAYERNPC_AREA_STEPS: 4
+  PLAYERNPC_ORGANIZE_AREA: true
+  PLAYERNPC_AUTODEPLOY: true
+  USE_COMPULSORY_AUTOPOT: true
+  USE_EQUIPS_ON_AUTOPOT: true
+  PET_AUTOHP_RATIO: 0.99
+  PET_AUTOMP_RATIO: 0.99
+  PET_EXHAUST_COUNT: 3
+  MOUNT_EXHAUST_COUNT: 1
+  PETS_NEVER_HUNGRY: false
+  GM_PETS_NEVER_HUNGRY: true
+  EVENT_MAX_GUILD_QUEUE: 10
+  EVENT_LOBBY_DELAY: 10
+  USE_FAST_DOJO_UPGRADE: false
+  USE_DEADLY_DOJO: true
+  DOJO_ENERGY_ATK: 100
+  DOJO_ENERGY_DMG: 20
+  WEDDING_RESERVATION_DELAY: 3
+  WEDDING_RESERVATION_TIMEOUT: 10
+  WEDDING_RESERVATION_INTERVAL: 60
+  WEDDING_BLESS_EXP: 30000
+  WEDDING_GIFT_LIMIT: 1
+  WEDDING_BLESSER_SHOWFX: true
+  TIMEOUT_DURATION: 3600000
+  EVENT_END_TIMESTAMP: 1428897600000
+  MINIMUM_GM_LEVEL_TO_TRADE: 4
+  MINIMUM_GM_LEVEL_TO_USE_STORAGE: 4
+  MINIMUM_GM_LEVEL_TO_USE_DUEY: 4
+  MINIMUM_GM_LEVEL_TO_DROP: 4
+  NPCS_SCRIPTABLE:
+    "9001105": Rescue Gaga!

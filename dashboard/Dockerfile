@@ -30,6 +30,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Copy public dir if it exists (may be empty)
 COPY --from=builder /app/public ./public
+# Bundle launcher manifest for the API to serve
+COPY --from=builder /app/launcher-manifest.json ./launcher-manifest.json
 
 USER nextjs
 EXPOSE 3000

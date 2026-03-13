@@ -3,8 +3,10 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 
-const COSMIC_ROOT = process.env.COSMIC_ROOT || "/Users/lucca/personal/Cosmic";
-const MANIFEST_PATH = path.join(COSMIC_ROOT, "launcher-manifest.json");
+// In production: check volume first (/cosmic), then bundled copy
+const VOLUME_MANIFEST = "/cosmic/launcher-manifest.json";
+const BUNDLED_MANIFEST = path.join(process.cwd(), "launcher-manifest.json");
+const MANIFEST_PATH = fs.existsSync(VOLUME_MANIFEST) ? VOLUME_MANIFEST : BUNDLED_MANIFEST;
 
 // Files the launcher tracks for updates
 const TRACKED_FILES = [

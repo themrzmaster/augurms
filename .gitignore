@@ -16,11 +16,16 @@ mcp-server/node_modules/
 dashboard/node_modules/
 dashboard/.next/
 
-# Server (upstream Cosmic - has its own repo)
-server/
+# Server local artifacts
+server/database/docker-db-data/
+server/.git/
+server/target/
 
 # Node
 node_modules/
+
+# LLM context (local only)
+CLAUDE.md
 
 # OS
 .DS_Store
