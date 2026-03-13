@@ -21,13 +21,20 @@ export async function GET() {
   try {
     const online = await tcpCheck(GAME_HOST, LOGIN_PORT);
     let gmModel = "moonshotai/kimi-k2.5";
+    let rates = { exp: 1, drop: 1, meso: 1 };
     try {
-      const [row] = await query("SELECT model FROM gm_schedule WHERE id = 1");
-      if ((row as any)?.model) gmModel = (row as any).model;
+      const [row] = await query("SELECT model, rates FROM gm_schedule WHERE id = 1");
+      const r = row as any;
+      if (r?.model) gmModel = r.model;
+      if (r?.rates) {
+        const parsed = typeof r.rates === "string" ? JSON.parse(r.rates) : r.rates;
+        rates = { exp: parsed.exp || 1, drop: parsed.drop || 1, meso: parsed.meso || 1 };
+      }
     } catch {}
     return NextResponse.json({
       status: online ? "running" : "stopped",
       gmModel,
+      rates,
     });
   } catch {
     return NextResponse.json({

@@ -28,6 +28,13 @@ export default function LandingPage() {
       .then((data: any) => {
         setStatus(data.status === "running" ? "online" : "offline");
         if (data.gmModel) setGmModel(data.gmModel);
+        if (data.rates) {
+          setRates({
+            exp: (data.rates.exp || 1) + "x",
+            drop: (data.rates.drop || 1) + "x",
+            meso: (data.rates.meso || 1) + "x",
+          });
+        }
       })
       .catch(() => setStatus("offline"));
 
@@ -35,26 +42,6 @@ export default function LandingPage() {
       .then((r) => r.json())
       .then((data) => {
         if (data?.news) setAugurLog(data.news.slice(0, 5));
-      })
-      .catch(() => {});
-
-    fetch("/api/config")
-      .then((r) => {
-        if (!r.ok) return null;
-        return r.json();
-      })
-      .then((data) => {
-        // Try world-level rates first (worlds[0]), then server-level
-        const world = data?.worlds?.[0];
-        const server = data?.config?.server || data?.server;
-        const src = world || server;
-        if (src) {
-          setRates({
-            exp: (src.exp_rate || src.EXP_RATE || 1) + "x",
-            drop: (src.drop_rate || src.DROP_RATE || 1) + "x",
-            meso: (src.meso_rate || src.MESO_RATE || 1) + "x",
-          });
-        }
       })
       .catch(() => {});
   }, []);
