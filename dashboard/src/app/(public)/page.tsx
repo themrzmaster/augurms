@@ -432,7 +432,8 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="relative z-10 mt-20 border-t border-border px-8 py-8 text-center text-sm text-text-muted">
-        AugurMS &mdash; MapleStory v83 private server. Not affiliated with Nexon.
+        <p>AugurMS &mdash; MapleStory v83 private server. Not affiliated with Nexon.</p>
+        <a href="https://discord.gg/aEE3zpFY" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-accent hover:underline">Join our Discord</a>
       </footer>
     </div>
   );
