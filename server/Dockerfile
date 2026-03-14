@@ -51,7 +51,7 @@ RUN chmod +x entrypoint.sh
 # Default exposure, although not required if using docker compose.
 # This exposes the login server, and channels.
 # Format for channels: WWCC, where WW is 75 plus the world number and CC is 75 plus the channel number (both zero indexed).
-EXPOSE 8484 7575 7576 7577
+EXPOSE 8484 7575 7576 7577 8585
 ENTRYPOINT ["./entrypoint.sh"]
 
 

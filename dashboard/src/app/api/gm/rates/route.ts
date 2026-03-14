@@ -88,10 +88,26 @@ export async function PUT(request: NextRequest) {
 
     writeFileSync(PATHS.config, stringifyYaml(config, { lineWidth: 0 }), "utf-8");
 
+    // Push rates to the live game server via Admin API
+    const GAME_API = process.env.GAME_API_URL || "http://augur-ms-game.internal:8585";
+    try {
+      await fetch(`${GAME_API}/rates`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exp_rate: config.worlds[world].exp_rate,
+          meso_rate: config.worlds[world].meso_rate,
+          drop_rate: config.worlds[world].drop_rate,
+          boss_drop_rate: config.worlds[world].boss_drop_rate,
+        }),
+      });
+    } catch {
+      // Game server might not be running — rates saved to config for next restart
+    }
+
     return NextResponse.json({
       success: true,
       changes,
-      note: "Server restart required for rate changes to take effect.",
     });
   } catch (err: any) {
     return NextResponse.json({ error: "Failed to update rates", details: err.message }, { status: 500 });

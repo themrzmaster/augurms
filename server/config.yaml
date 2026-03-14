@@ -4,13 +4,13 @@ worlds:
     event_message: "[Cosmic Spring Bloom] Strange mushrooms have bloomed across the land! Hunt them down for rare drops - Elixirs, Power Elixirs, and STR Scrolls! Event active at Snail Hunting Ground II and Henesys Hunting Ground II!"
     why_am_i_recommended: Welcome to Scania!
     channels: 3
-    exp_rate: 10
-    meso_rate: 10
-    drop_rate: 10
-    boss_drop_rate: 10
-    quest_rate: 5
-    fishing_rate: 10
-    travel_rate: 10
+    exp_rate: 1
+    meso_rate: 1
+    drop_rate: 1
+    boss_drop_rate: 1
+    quest_rate: 1
+    fishing_rate: 1
+    travel_rate: 1
   - flag: 0
     server_message: Welcome to Bera!
     event_message: Bera!

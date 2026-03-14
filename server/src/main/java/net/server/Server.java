@@ -938,6 +938,11 @@ public class Server {
         log.info("Listening on port 8484");
 
         online = true;
+
+        // Start Admin API for dashboard control
+        AdminAPI adminAPI = new AdminAPI();
+        adminAPI.start();
+
         Duration initDuration = Duration.between(beforeInit, Instant.now());
         log.info("Cosmic is now online after {} ms.", initDuration.toMillis());
 
