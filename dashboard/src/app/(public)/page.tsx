@@ -21,6 +21,7 @@ export default function LandingPage() {
   const [installTab, setInstallTab] = useState<"launcher" | "manual">("launcher");
   const [augurLog, setAugurLog] = useState<Array<{ type: string; text: string; date: string }>>([]);
   const [gmModel, setGmModel] = useState("");
+  const [stats, setStats] = useState({ players: 0, accounts: 0, characters: 0, maxLevel: 0 });
 
   useEffect(() => {
     fetch("/api/server")
@@ -35,6 +36,12 @@ export default function LandingPage() {
             meso: (data.rates.meso || 1) + "x",
           });
         }
+        setStats({
+          players: data.players || 0,
+          accounts: data.accounts || 0,
+          characters: data.characters || 0,
+          maxLevel: data.maxLevel || 0,
+        });
       })
       .catch(() => setStatus("offline"));
 
@@ -92,20 +99,42 @@ export default function LandingPage() {
           />
         </div>
 
-        {/* Status badge */}
-        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border px-4 py-1.5">
-          <span
-            className={`h-2 w-2 rounded-full ${
-              status === "online"
-                ? "bg-accent-green shadow-[0_0_8px_rgba(66,211,146,0.5)]"
-                : status === "offline"
-                ? "bg-accent-red"
-                : "bg-text-muted animate-pulse"
-            }`}
-          />
-          <span className="text-xs font-medium text-text-secondary">
-            {status === "loading" ? "Checking..." : status === "online" ? "Server Online" : "Server Offline"}
-          </span>
+        {/* Stats bar */}
+        <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-1.5">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                status === "online"
+                  ? "bg-accent-green shadow-[0_0_8px_rgba(66,211,146,0.5)]"
+                  : status === "offline"
+                  ? "bg-accent-red"
+                  : "bg-text-muted animate-pulse"
+              }`}
+            />
+            <span className="text-xs font-medium text-text-secondary">
+              {status === "loading"
+                ? "Checking..."
+                : status === "online"
+                ? `${stats.players} Online`
+                : "Server Offline"}
+            </span>
+          </div>
+          {status !== "loading" && (
+            <>
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5">
+                <span className="text-xs text-text-muted">Accounts</span>
+                <span className="text-xs font-bold text-text-primary">{stats.accounts}</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5">
+                <span className="text-xs text-text-muted">Characters</span>
+                <span className="text-xs font-bold text-text-primary">{stats.characters}</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5">
+                <span className="text-xs text-text-muted">Top Level</span>
+                <span className="text-xs font-bold text-accent-gold">{stats.maxLevel}</span>
+              </div>
+            </>
+          )}
         </div>
 
         <h1 className="max-w-3xl text-5xl font-extrabold leading-tight tracking-tight sm:text-6xl lg:text-7xl">

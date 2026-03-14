@@ -40,17 +40,35 @@ export async function GET() {
       }
     } catch {}
 
-    // Read GM model from DB
+    // Read GM model and player stats from DB
+    let players = 0;
+    let accounts = 0;
+    let characters = 0;
+    let maxLevel = 0;
     try {
       const [row] = await query("SELECT model FROM gm_schedule WHERE id = 1");
       const r = row as any;
       if (r?.model) gmModel = r.model;
+    } catch {}
+    try {
+      const [s] = await query("SELECT COUNT(*) as cnt FROM accounts");
+      accounts = (s as any)?.cnt || 0;
+      const [c] = await query("SELECT COUNT(*) as cnt FROM characters WHERE loggedin > 0");
+      players = (c as any)?.cnt || 0;
+      const [t] = await query("SELECT COUNT(*) as cnt FROM characters");
+      characters = (t as any)?.cnt || 0;
+      const [m] = await query("SELECT COALESCE(MAX(level),0) as max FROM characters");
+      maxLevel = (m as any)?.max || 0;
     } catch {}
 
     return NextResponse.json({
       status: online ? "running" : "stopped",
       gmModel,
       rates,
+      players,
+      accounts,
+      characters,
+      maxLevel,
     });
   } catch {
     return NextResponse.json({
