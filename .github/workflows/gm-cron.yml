@@ -1,0 +1,14 @@
+name: GM Auto-Tuning Cron
+
+on:
+  schedule:
+    - cron: "*/10 * * * *" # every 10 minutes
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping GM cron check
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://augurms.com/api/gm/cron/check)
+          echo "Status: $RESPONSE"
