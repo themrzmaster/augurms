@@ -53,10 +53,16 @@ export async function GET() {
     try {
       const [s] = await query("SELECT COUNT(*) as cnt FROM accounts");
       accounts = (s as any)?.cnt || 0;
-      const [c] = await query("SELECT COUNT(*) as cnt FROM characters WHERE loggedin > 0");
+    } catch {}
+    try {
+      const [c] = await query("SELECT COUNT(*) as cnt FROM accounts WHERE loggedin > 0");
       players = (c as any)?.cnt || 0;
+    } catch {}
+    try {
       const [t] = await query("SELECT COUNT(*) as cnt FROM characters");
       characters = (t as any)?.cnt || 0;
+    } catch {}
+    try {
       const [m] = await query("SELECT COALESCE(MAX(level),0) as max FROM characters");
       maxLevel = (m as any)?.max || 0;
     } catch {}
