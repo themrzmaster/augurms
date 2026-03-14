@@ -14,24 +14,23 @@ jobs:
 
       - name: Set Fly.io secrets
         run: |
-          flyctl secrets set \
-            DB_HOST="${{ secrets.DB_HOST }}" \
-            DB_PORT="${{ secrets.DB_PORT }}" \
-            DB_USER="${{ secrets.DB_USER }}" \
-            DB_PASS="${{ secrets.DB_PASS }}" \
-            DB_NAME="${{ secrets.DB_NAME }}" \
-            JWT_SECRET="${{ secrets.JWT_SECRET }}" \
-            ADMIN_USER="${{ secrets.ADMIN_USER }}" \
-            ADMIN_PASS_HASH="${{ secrets.ADMIN_PASS_HASH }}" \
-            OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}" \
-            TURNSTILE_SECRET_KEY="${{ secrets.TURNSTILE_SECRET_KEY }}" \
-            R2_ENDPOINT="${{ secrets.R2_ENDPOINT }}" \
-            R2_ACCESS_KEY="${{ secrets.R2_ACCESS_KEY }}" \
-            R2_SECRET_KEY="${{ secrets.R2_SECRET_KEY }}" \
-            R2_BUCKET="${{ secrets.R2_BUCKET }}" \
-            R2_PUBLIC_URL="${{ secrets.R2_PUBLIC_URL }}" \
-            --app augur-ms \
-            --stage
+          cat <<'SECRETS' | flyctl secrets import --app augur-ms --stage
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_PORT=${{ secrets.DB_PORT }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASS=${{ secrets.DB_PASS }}
+          DB_NAME=${{ secrets.DB_NAME }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          ADMIN_USER=${{ secrets.ADMIN_USER }}
+          ADMIN_PASS_HASH=${{ secrets.ADMIN_PASS_HASH }}
+          OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+          TURNSTILE_SECRET_KEY=${{ secrets.TURNSTILE_SECRET_KEY }}
+          R2_ENDPOINT=${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY=${{ secrets.R2_ACCESS_KEY }}
+          R2_SECRET_KEY=${{ secrets.R2_SECRET_KEY }}
+          R2_BUCKET=${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }}
+          SECRETS
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -49,12 +48,11 @@ jobs:
 
       - name: Set Fly.io secrets
         run: |
-          flyctl secrets set \
-            DB_PASS="${{ secrets.DB_PASS }}" \
-            GAME_HOST="${{ secrets.GAME_HOST }}" \
-            DISABLE_AUTO_REGISTER="${{ secrets.DISABLE_AUTO_REGISTER }}" \
-            --app augur-ms-game \
-            --stage
+          cat <<'SECRETS' | flyctl secrets import --app augur-ms-game --stage
+          DB_PASS=${{ secrets.DB_PASS }}
+          GAME_HOST=${{ secrets.GAME_HOST }}
+          DISABLE_AUTO_REGISTER=${{ secrets.DISABLE_AUTO_REGISTER }}
+          SECRETS
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
