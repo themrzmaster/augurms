@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createConnection, Socket } from "net";
+import { readFileSync } from "fs";
+import { parse as parseYaml } from "yaml";
 import { query } from "@/lib/db";
+import { PATHS } from "@/lib/cosmic";
 
 const GAME_HOST = process.env.GAME_SERVER_HOST || "augur-ms-game.internal";
 const LOGIN_PORT = 8484;
@@ -22,15 +25,28 @@ export async function GET() {
     const online = await tcpCheck(GAME_HOST, LOGIN_PORT);
     let gmModel = "moonshotai/kimi-k2.5";
     let rates = { exp: 1, drop: 1, meso: 1 };
+
+    // Read rates from actual game config (source of truth)
     try {
-      const [row] = await query("SELECT model, rates FROM gm_schedule WHERE id = 1");
-      const r = row as any;
-      if (r?.model) gmModel = r.model;
-      if (r?.rates) {
-        const parsed = typeof r.rates === "string" ? JSON.parse(r.rates) : r.rates;
-        rates = { exp: parsed.exp || 1, drop: parsed.drop || 1, meso: parsed.meso || 1 };
+      const content = readFileSync(PATHS.config, "utf-8");
+      const config = parseYaml(content);
+      const world = config?.worlds?.[0];
+      if (world) {
+        rates = {
+          exp: world.exp_rate || 1,
+          drop: world.drop_rate || 1,
+          meso: world.meso_rate || 1,
+        };
       }
     } catch {}
+
+    // Read GM model from DB
+    try {
+      const [row] = await query("SELECT model FROM gm_schedule WHERE id = 1");
+      const r = row as any;
+      if (r?.model) gmModel = r.model;
+    } catch {}
+
     return NextResponse.json({
       status: online ? "running" : "stopped",
       gmModel,
