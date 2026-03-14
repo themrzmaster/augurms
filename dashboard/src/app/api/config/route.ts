@@ -61,6 +61,25 @@ export async function PUT(request: NextRequest) {
 
     writeFileSync(PATHS.config, newContent, "utf-8");
 
+    // If a rate was changed, push to the live game server
+    const RATE_KEYS = ["exp_rate", "meso_rate", "drop_rate", "boss_drop_rate"];
+    if (RATE_KEYS.includes(lastKey)) {
+      const GAME_API = process.env.GAME_API_URL || "http://augur-ms-game.internal:8585";
+      try {
+        const world = config.worlds?.[0] || {};
+        await fetch(`${GAME_API}/rates`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            exp_rate: world.exp_rate,
+            meso_rate: world.meso_rate,
+            drop_rate: world.drop_rate,
+            boss_drop_rate: world.boss_drop_rate,
+          }),
+        });
+      } catch { /* game server may not be running */ }
+    }
+
     return NextResponse.json({ success: true, message: "Config updated" });
   } catch (err: any) {
     return NextResponse.json({ error: "Failed to update config", details: err.message }, { status: 500 });
