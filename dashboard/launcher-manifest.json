@@ -1,6 +1,6 @@
 {
-  "version": "1.0.3",
-  "updatedAt": "2026-03-13T19:35:00Z",
+  "version": "1.0.4",
+  "updatedAt": "2026-03-14T02:30:00Z",
   "files": [
     {
       "name": "AugurMS.exe",
@@ -34,8 +34,8 @@
     },
     {
       "name": "Map.wz",
-      "hash": "b9b1586af0132eed553b992ed514221a7ed9d39bc33bcbd706fb8cd0e4eeaa51",
-      "size": 81945907,
+      "hash": "a39da5ac66cb3cb1803b1a8f70f19cdf67ca191016e16c853f521b3c8156aca4",
+      "size": 638428788,
       "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/Map.wz"
     },
     {
