@@ -29,9 +29,10 @@ async function api(path: string, options?: RequestInit) {
 
 // ---- Tool category inference ----
 
-function inferCategory(toolName: string): "rates" | "mobs" | "drops" | "spawns" | "shops" | "events" | "config" | "other" {
+function inferCategory(toolName: string): "rates" | "mobs" | "drops" | "spawns" | "shops" | "events" | "config" | "reactors" | "other" {
   if (toolName.includes("rate")) return "rates";
   if (toolName.includes("mob") || toolName.includes("batch_update_mobs")) return "mobs";
+  if (toolName.includes("reactor")) return "reactors";
   if (toolName.includes("drop")) return "drops";
   if (toolName.includes("spawn") || toolName.includes("map")) return "spawns";
   if (toolName.includes("shop")) return "shops";
@@ -45,6 +46,9 @@ const WRITE_TOOLS = new Set([
   "update_mob", "batch_update_mobs",
   "add_mob_drop", "remove_mob_drop", "batch_update_drops",
   "add_map_spawn", "remove_map_spawn",
+  "add_map_reactor", "remove_map_reactor",
+  "add_reactor_drop", "remove_reactor_drop",
+  "spawn_drop",
   "add_shop_item", "update_shop_price", "remove_shop_item",
   "update_rates", "update_config",
   "create_event", "cleanup_event",
@@ -122,6 +126,30 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
 
   remove_map_spawn: async ({ mapId, type, lifeId }) =>
     JSON.stringify(await api(`/api/maps/${mapId}/spawns`, { method: "DELETE", body: JSON.stringify({ type, id: lifeId }) })),
+
+  search_reactors: async ({ query }) =>
+    JSON.stringify(await api(`/api/reactors${query ? `?q=${encodeURIComponent(query)}` : ""}`)),
+
+  get_map_reactors: async ({ mapId }) =>
+    JSON.stringify(await api(`/api/maps/${mapId}/reactors`)),
+
+  add_map_reactor: async ({ mapId, reactorId, x, y, f, reactorTime, name }) =>
+    JSON.stringify(await api(`/api/maps/${mapId}/reactors`, { method: "POST", body: JSON.stringify({ reactorId, x, y, f, reactorTime, name }) })),
+
+  remove_map_reactor: async ({ mapId, reactorId }) =>
+    JSON.stringify(await api(`/api/maps/${mapId}/reactors`, { method: "DELETE", body: JSON.stringify({ reactorId }) })),
+
+  get_reactor_drops: async ({ reactorId }) =>
+    JSON.stringify(await api(`/api/gm/reactordrops/${reactorId}`)),
+
+  add_reactor_drop: async ({ reactorId, itemId, chance, questId }) =>
+    JSON.stringify(await api(`/api/gm/reactordrops/${reactorId}`, { method: "POST", body: JSON.stringify({ itemId, chance, questId }) })),
+
+  remove_reactor_drop: async ({ reactorId, itemId }) =>
+    JSON.stringify(await api(`/api/gm/reactordrops/${reactorId}`, { method: "DELETE", body: JSON.stringify({ itemId }) })),
+
+  spawn_drop: async ({ itemId, quantity, characterName, characterId, mapId, x, y }) =>
+    JSON.stringify(await api("/api/gm/drop", { method: "POST", body: JSON.stringify({ itemId, quantity, characterName, characterId, mapId, x, y }) })),
 
   get_shop_items: async ({ shopId }) =>
     JSON.stringify(await api(`/api/gm/shops/${shopId}/items`)),
@@ -602,6 +630,121 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
     },
   },
 
+  // ── Reactors ──
+  {
+    type: "function",
+    function: {
+      name: "search_reactors",
+      description: "Search available reactor templates (breakable objects, boxes, eggs, plants, crystals). Returns: id, name, state count, whether a script exists. There are 421 reactor visuals in the game — use existing ones to place on maps.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Reactor name or ID to search" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_map_reactors",
+      description: "List reactor spawns currently placed on a map (from preactor DB table). These are GM-placed reactors, not WZ-default ones.",
+      parameters: { type: "object", properties: { mapId: { type: "number", description: "Map ID" } }, required: ["mapId"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_map_reactor",
+      description: "Place a reactor (breakable object) on a map. Stored in preactor DB table, loaded by server on map init. Use search_reactors to find reactor IDs, and get_map to find valid x,y coordinates. Takes effect on server restart.",
+      parameters: {
+        type: "object",
+        properties: {
+          mapId: { type: "number", description: "Map ID to place reactor on" },
+          reactorId: { type: "number", description: "Reactor template ID (from search_reactors)" },
+          x: { type: "number", description: "X coordinate" },
+          y: { type: "number", description: "Y coordinate" },
+          f: { type: "number", description: "Facing direction: 0=left, 1=right (default 0)" },
+          reactorTime: { type: "number", description: "Respawn delay in seconds after broken (-1 = no respawn, 0 = instant, default -1)" },
+          name: { type: "string", description: "Optional reactor name/tag for identification" },
+        },
+        required: ["mapId", "reactorId", "x", "y"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_map_reactor",
+      description: "Remove a GM-placed reactor from a map. Removes from preactor DB table.",
+      parameters: {
+        type: "object",
+        properties: {
+          mapId: { type: "number", description: "Map ID" },
+          reactorId: { type: "number", description: "Reactor template ID to remove" },
+        },
+        required: ["mapId", "reactorId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_reactor_drops",
+      description: "Get the drop table for a reactor. Returns items that drop when the reactor is broken. Chance values: higher = more common (unlike mob drops, reactor chances are simpler — typically 1-100 where lower = rarer).",
+      parameters: { type: "object", properties: { reactorId: { type: "number", description: "Reactor template ID" } }, required: ["reactorId"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_reactor_drop",
+      description: "Add an item drop to a reactor. When players break this reactor, it can drop this item. Great for treasure hunt events — place reactors on maps and configure their drops.",
+      parameters: {
+        type: "object",
+        properties: {
+          reactorId: { type: "number", description: "Reactor template ID" },
+          itemId: { type: "number", description: "Item ID to drop" },
+          chance: { type: "number", description: "Drop chance (higher = more common, typically 1-100)" },
+          questId: { type: "number", description: "Quest ID requirement (-1 for no requirement, default -1)" },
+        },
+        required: ["reactorId", "itemId", "chance"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_reactor_drop",
+      description: "Remove an item from a reactor's drop table.",
+      parameters: {
+        type: "object",
+        properties: {
+          reactorId: { type: "number", description: "Reactor template ID" },
+          itemId: { type: "number", description: "Item ID to remove from drops" },
+        },
+        required: ["reactorId", "itemId"],
+      },
+    },
+  },
+
+  // ── Live Drops ──
+  {
+    type: "function",
+    function: {
+      name: "spawn_drop",
+      description: "Spawn a visible item drop on the ground that players can pick up. Requires the game server to be running. Provide characterName to drop in front of an ONLINE player, or mapId+x+y to drop at specific coordinates. The item appears on the ground with the normal drop animation.",
+      parameters: {
+        type: "object",
+        properties: {
+          itemId: { type: "number", description: "Item ID to drop (use search_items to find IDs)" },
+          quantity: { type: "number", description: "Stack quantity (default 1, max 999)" },
+          characterName: { type: "string", description: "Drop in front of this online player (by character name)" },
+          characterId: { type: "number", description: "Drop in front of this online player (by character ID)" },
+          mapId: { type: "number", description: "Map ID to drop on (use with x,y instead of characterName)" },
+          x: { type: "number", description: "X coordinate on map" },
+          y: { type: "number", description: "Y coordinate on map" },
+        },
+        required: ["itemId"],
+      },
+    },
+  },
+
   // ── Shops ──
   {
     type: "function",
@@ -976,19 +1119,47 @@ async function buildHistoricalContext(): Promise<string> {
 
 const BASE_SYSTEM_PROMPT = `You are the Augur — the AI Game Master of a MapleStory v83 private server called AugurMS.
 
-## Your Role — Game Director, Not a Knob Turner
-Your primary job is to create a **smooth, enjoyable game experience**. You are NOT an optimizer that tweaks numbers every cycle. Think of yourself as a game director who:
+## Your Mission — Grow the Community & Keep Players Hooked
+Your #1 goal is to **increase the number of active players** and **maximize engagement**. Every decision you make should serve player retention and dopamine. Think about what makes players:
+- Log in tomorrow
+- Tell their friends about the server
+- Stay "just one more hour"
+- Feel rewarded, surprised, and excited
 
-1. **Creates content** — Design events, place limited-time mobs, add seasonal drops, set up treasure hunts, spawn rare NPCs. Make the world feel alive and surprising.
-2. **Monitors health** — Watch for problems (inflation, broken drops, dead zones), but only intervene when something is clearly wrong.
-3. **Curates the world** — Adjust spawns to make maps more interesting, ensure progression paths feel natural, keep the world populated with diverse content.
+You are a game director who creates moments players remember and talk about.
+
+## Your Role — Experience Architect
+Think of yourself as a game director who:
+
+1. **Creates experiences** — Design events, treasure hunts, surprise drops, boss invasions, seasonal content. Make the world feel alive, unpredictable, and rewarding. Players should never feel like "nothing is happening."
+2. **Engineers dopamine loops** — Use variable reward schedules. Rare surprise drops, mystery boxes, limited-time spawns, jackpot reactors. The anticipation of "maybe THIS kill drops something amazing" is what keeps players grinding.
+3. **Monitors health** — Watch for problems (inflation, broken drops, dead zones, player decline), but don't over-optimize. A slightly imbalanced but FUN server beats a perfectly tuned boring one.
+4. **Curates the world** — Place content where players are (and where you want them to go). Make exploration rewarding. Populate dead maps with reasons to visit.
 
 ## What You Should Do Often
-- Create fun events (holiday events, boss rush, treasure hunts, invasion events)
-- Place interesting mobs in underused maps to make exploration rewarding
+- Create events (holiday events, boss rush, treasure hunts, invasion events, scavenger hunts)
+- Place breakable reactors (eggs, boxes, chests) on maps with surprise loot — players LOVE breaking things for random rewards
+- Use \`spawn_drop\` to surprise online players with items appearing at their feet — use sparingly for maximum impact (e.g. reward a player who just hit a milestone, or surprise someone who's been grinding for hours)
 - Add temporary bonus drops or special spawns for variety
-- Set server announcements for events and community engagement
-- Set goals to track long-term health without rushing to fix everything
+- Set server announcements to build hype and FOMO
+- Place interesting mobs in underused maps to make exploration rewarding
+- Set goals to track player growth and retention
+
+## Reactor Events — Your Secret Weapon
+You can place breakable objects (reactors) on maps that drop items when players hit them. This is incredibly engaging:
+- Search for reactor templates with \`search_reactors\` (eggs, boxes, plants, crystals, chests — 421 options)
+- Place them on maps with \`add_map_reactor\`
+- Configure their drops with \`add_reactor_drop\`
+- Players discover them, break them, get loot — pure dopamine
+- Use for: treasure hunts, Easter eggs, hidden rewards, map exploration incentives
+
+## Live Drops — Direct Player Rewards
+You can drop items directly in front of online players using \`spawn_drop\`. This is powerful but use it with restraint:
+- DO: Reward a player who just achieved something (leveled up, killed a boss, been online for hours)
+- DO: Create "mystery gift" moments that make players feel special
+- DON'T: Spam drops constantly — scarcity creates value. A surprise gift every few hours hits harder than constant drops
+- DON'T: Drop items worth so much that it breaks the economy
+- The goal is to make players think "this server has a living GM that actually cares about us"
 
 ## What You Should Do Rarely (only when clearly needed)
 - Change EXP/meso/drop rates — these affect the core feel of the game
@@ -996,17 +1167,19 @@ Your primary job is to create a **smooth, enjoyable game experience**. You are N
 - Alter shop prices — these are part of the economy's foundation
 
 ## Philosophy
-- **Stability over optimization.** Players hate when the game feels different every day.
+- **Engagement over balance.** A perfectly balanced dead server is worse than a slightly wild server with 50 active players.
 - **Content over numbers.** Creating a cool event is worth more than a 5% rate adjustment.
+- **Surprise and delight.** The best retention tool is a player telling their friend "you won't believe what just happened in game."
+- **Scarcity creates value.** Limited-time events, rare drops, and ephemeral content drive urgency. FOMO is your friend.
 - **Observe before acting.** Trends over days/weeks matter more than a single snapshot.
 - **Don't fix what isn't broken.** If the economy is roughly stable, leave the rates alone.
 
 ## Decision Framework
-1. OBSERVE: Read analytics and trends
-2. COMPARE: Check against your previous sessions
-3. CONTENT FIRST: Can you improve the experience by adding content instead of changing numbers?
+1. OBSERVE: Read analytics and trends — how many players, what are they doing, where are they?
+2. COMPARE: Check against previous sessions — are players growing, declining, or stagnant?
+3. ENGAGE FIRST: Can you create an event, place reactors, or surprise players instead of changing numbers?
 4. INTERVENE ONLY IF NEEDED: Only touch rates/stats if there's a clear, sustained problem
-5. RECORD: Update goals to track long-term objectives
+5. RECORD: Update goals to track player growth and retention metrics
 
 ## Memory & Continuity
 You have persistent memory via snapshots, action logs, and goals.
@@ -1022,6 +1195,7 @@ You have persistent memory via snapshots, action logs, and goals.
 - Meso inflation rate: <5% per day
 - No item should have >80% saturation
 - Boss content accessible to 50%+ of eligible players
+- Target: growing active player count week over week
 
 ## Guardrails
 - Never set rates below 1x or above 50x
@@ -1029,7 +1203,9 @@ You have persistent memory via snapshots, action logs, and goals.
 - Never change more than 1 major lever per session
 - Always explain your reasoning before making changes
 - Rate changes should be rare — at most once per week
-- Prefer creating events over adjusting numbers
+- Prefer creating events and content over adjusting numbers
+- \`spawn_drop\` is for special moments, not routine — max a few per session
+- Reactor events should feel curated, not spammy — quality over quantity
 
 ## Communication
 - Be direct and concise

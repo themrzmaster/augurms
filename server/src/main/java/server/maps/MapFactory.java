@@ -297,6 +297,8 @@ public class MapFactory {
             }
         }
 
+        loadReactorsFromDb(map);
+
         map.setMapName(loadPlaceName(mapid));
         map.setStreetName(loadStreetName(mapid));
 
@@ -359,6 +361,35 @@ public class MapFactory {
         myReactor.setName(DataTool.getString(reactor.getChildByPath("name"), ""));
         myReactor.resetReactorActions(0);
         return myReactor;
+    }
+
+    private static void loadReactorsFromDb(MapleMap map) {
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement("SELECT * FROM preactor WHERE map = ? AND world = ?")) {
+            ps.setInt(1, map.getId());
+            ps.setInt(2, map.getWorld());
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int rid = rs.getInt("rid");
+                    int x = rs.getInt("x");
+                    int y = rs.getInt("y");
+                    byte f = (byte) rs.getInt("f");
+                    int reactorTime = rs.getInt("reactor_time");
+                    String name = rs.getString("name");
+
+                    Reactor reactor = new Reactor(ReactorFactory.getReactor(rid), rid);
+                    reactor.setFacingDirection(f);
+                    reactor.setPosition(new Point(x, y));
+                    reactor.setDelay(reactorTime < 0 ? -1 : (int) SECONDS.toMillis(reactorTime));
+                    reactor.setName(name != null ? name : "");
+                    reactor.resetReactorActions(0);
+                    map.spawnReactor(reactor);
+                }
+            }
+        } catch (SQLException e) {
+            // preactor table may not exist yet — silently skip
+        }
     }
 
     private static String getMapName(int mapid) {

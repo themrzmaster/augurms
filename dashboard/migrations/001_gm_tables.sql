@@ -78,3 +78,17 @@ CREATE TABLE IF NOT EXISTS gm_schedule (
 -- Seed default schedule row
 INSERT IGNORE INTO gm_schedule (id, enabled, interval_hours, prompt)
 VALUES (1, 0, 6, 'Review server health and make adjustments as needed.');
+
+-- Persistent reactor spawns (loaded by game server on map init, like plife for mobs/NPCs)
+CREATE TABLE IF NOT EXISTS preactor (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  world INT NOT NULL DEFAULT 0,
+  map INT NOT NULL,
+  rid INT NOT NULL COMMENT 'Reactor template ID from Reactor.wz',
+  x INT NOT NULL DEFAULT 0,
+  y INT NOT NULL DEFAULT 0,
+  f INT NOT NULL DEFAULT 0 COMMENT 'Facing direction',
+  reactor_time INT NOT NULL DEFAULT -1 COMMENT 'Respawn delay in seconds (-1 = no respawn)',
+  name VARCHAR(100) DEFAULT '',
+  INDEX (map, world)
+);

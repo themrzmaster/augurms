@@ -1,11 +1,15 @@
 package net.server;
 
+import client.Character;
+import client.inventory.Item;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
 import net.server.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import server.maps.MapleMap;
 
+import java.awt.Point;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -25,6 +29,7 @@ public class AdminAPI {
             server = HttpServer.create(new InetSocketAddress(PORT), 0);
             server.createContext("/rates", this::handleRates);
             server.createContext("/status", this::handleStatus);
+            server.createContext("/drop", this::handleDrop);
             server.setExecutor(null);
             server.start();
             log.info("Admin API started on port {}", PORT);
@@ -111,6 +116,99 @@ public class AdminAPI {
             w0 != null ? w0.getDropRate() : 0
         );
         respond(ex, 200, json);
+    }
+
+    private void handleDrop(HttpExchange ex) throws IOException {
+        if (!"POST".equals(ex.getRequestMethod())) {
+            respond(ex, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+
+        // Parse required fields
+        Integer itemId = extractInt(body, "itemId");
+        Integer quantity = extractInt(body, "quantity");
+        String characterName = extractString(body, "characterName");
+        Integer characterId = extractInt(body, "characterId");
+        Integer mapId = extractInt(body, "mapId");
+        Integer x = extractInt(body, "x");
+        Integer y = extractInt(body, "y");
+        Integer worldId = extractInt(body, "world");
+
+        if (itemId == null) {
+            respond(ex, 400, "{\"error\":\"itemId is required\"}");
+            return;
+        }
+        if (quantity == null || quantity < 1) quantity = 1;
+        if (worldId == null) worldId = 0;
+
+        World world = Server.getInstance().getWorld(worldId);
+        if (world == null) {
+            respond(ex, 500, "{\"error\":\"World not found\"}");
+            return;
+        }
+
+        // Find the target character (by name or id)
+        Character target = null;
+        if (characterName != null) {
+            target = world.getPlayerStorage().getCharacterByName(characterName);
+        } else if (characterId != null) {
+            target = world.getPlayerStorage().getCharacterById(characterId);
+        }
+
+        // Target must be an online player (needed as dropper/owner for the drop packet)
+        if (target == null) {
+            // If characterName/Id didn't find anyone, and we have mapId+x+y, try to find ANY player on that map
+            if (mapId != null && x != null && y != null) {
+                for (var ch : world.getChannels()) {
+                    MapleMap m = ch.getMapFactory().getMap(mapId);
+                    var players = m.getAllPlayers();
+                    if (!players.isEmpty()) {
+                        target = players.get(0);
+                        break;
+                    }
+                }
+            }
+            if (target == null) {
+                respond(ex, 400, "{\"error\":\"No online player found. Provide characterName/characterId of an online player, or ensure someone is on the target map.\"}");
+                return;
+            }
+        }
+
+        // Determine map and drop position
+        MapleMap map = target.getMap();
+        Point dropPos;
+
+        if (mapId != null && x != null && y != null) {
+            // Use explicit map + coords if given
+            map = target.getClient().getChannelServer().getMapFactory().getMap(mapId);
+            dropPos = new Point(x, y);
+        } else {
+            // Drop in front of the character
+            Point pos = target.getPosition();
+            dropPos = new Point(pos.x + 30, pos.y);
+        }
+
+        // Create and spawn the item drop (FFA so anyone can pick it up)
+        Item item = new Item(itemId, (short) 0, (short) Math.min(quantity, 999));
+        map.spawnItemDrop(target, target, item, dropPos, true, false);
+
+        log.info("Admin API: Dropped {}x item {} on map {} at ({},{})", quantity, itemId, map.getId(), dropPos.x, dropPos.y);
+        respond(ex, 200, String.format(
+            "{\"success\":true,\"itemId\":%d,\"quantity\":%d,\"mapId\":%d,\"x\":%d,\"y\":%d}",
+            itemId, quantity, map.getId(), dropPos.x, dropPos.y
+        ));
+    }
+
+    private static String extractString(String json, String key) {
+        String search = "\"" + key + "\":\"";
+        int idx = json.indexOf(search);
+        if (idx < 0) return null;
+        int start = idx + search.length();
+        int end = json.indexOf("\"", start);
+        if (end < 0) return null;
+        return json.substring(start, end);
     }
 
     private static Integer extractInt(String json, String key) {

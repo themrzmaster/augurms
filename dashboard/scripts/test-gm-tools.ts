@@ -263,6 +263,26 @@ async function testDryBatchUpdateDrops(): Promise<TestResult> {
   return { name: "batch_update_drops", status: "dry", detail: "Would batch update drops" };
 }
 
+async function testDryAddMapReactor(): Promise<TestResult> {
+  if (!ALLOW_WRITES) return { name: "add_map_reactor", status: "dry", detail: "Skipped (use --write to test)" };
+  return { name: "add_map_reactor", status: "dry", detail: "Would add reactor to map" };
+}
+
+async function testDryRemoveMapReactor(): Promise<TestResult> {
+  if (!ALLOW_WRITES) return { name: "remove_map_reactor", status: "dry", detail: "Skipped (use --write to test)" };
+  return { name: "remove_map_reactor", status: "dry", detail: "Would remove reactor from map" };
+}
+
+async function testDryAddReactorDrop(): Promise<TestResult> {
+  if (!ALLOW_WRITES) return { name: "add_reactor_drop", status: "dry", detail: "Skipped (use --write to test)" };
+  return { name: "add_reactor_drop", status: "dry", detail: "Would add reactor drop" };
+}
+
+async function testDryRemoveReactorDrop(): Promise<TestResult> {
+  if (!ALLOW_WRITES) return { name: "remove_reactor_drop", status: "dry", detail: "Skipped (use --write to test)" };
+  return { name: "remove_reactor_drop", status: "dry", detail: "Would remove reactor drop" };
+}
+
 async function testDryAddMapSpawn(): Promise<TestResult> {
   if (!ALLOW_WRITES) return { name: "add_map_spawn", status: "dry", detail: "Skipped (use --write to test)" };
   return { name: "add_map_spawn", status: "dry", detail: "Would add map spawn" };
@@ -332,6 +352,30 @@ async function testDryPublishClientUpdate(): Promise<TestResult> {
   return { name: "publish_client_update", status: "dry", detail: "Always skipped (never auto-test client updates)" };
 }
 
+// ── Reactor Tools ──
+
+async function testSearchReactors(): Promise<TestResult> {
+  const { status, data, ok } = await api("/api/reactors");
+  if (!ok) return { name: "search_reactors", status: "fail", detail: `HTTP ${status}` };
+  if (!Array.isArray(data)) return { name: "search_reactors", status: "fail", detail: "Response not an array" };
+  return { name: "search_reactors", status: "pass", detail: `${data.length} reactors found` };
+}
+
+async function testGetReactorDrops(): Promise<TestResult> {
+  // Reactor 1012000 (Ellinia Plant) is known to have drops
+  const { status, data, ok } = await api("/api/gm/reactordrops/1012000");
+  if (!ok) return { name: "get_reactor_drops", status: "fail", detail: `HTTP ${status}` };
+  const count = data.drops?.length ?? 0;
+  return { name: "get_reactor_drops", status: "pass", detail: `Reactor 1012000 has ${count} drops` };
+}
+
+async function testGetMapReactors(): Promise<TestResult> {
+  const { status, data, ok } = await api("/api/maps/100000000/reactors");
+  if (!ok) return { name: "get_map_reactors", status: "fail", detail: `HTTP ${status}` };
+  const count = Array.isArray(data) ? data.length : 0;
+  return { name: "get_map_reactors", status: "pass", detail: `Map 100000000 has ${count} GM-placed reactors` };
+}
+
 async function testGetServerLogs(): Promise<TestResult> {
   const { status, data, ok } = await api("/api/server/logs?lines=10&service=maplestory");
   if (!ok && data?.error?.includes("Docker")) {
@@ -380,6 +424,9 @@ async function run() {
     testGetSnapshots,
     testGetGoals,
     testGetTrends,
+    testSearchReactors,
+    testGetReactorDrops,
+    testGetMapReactors,
   ];
 
   for (const test of readTests) {
@@ -400,6 +447,10 @@ async function run() {
     testDryAddMobDrop,
     testDryRemoveMobDrop,
     testDryBatchUpdateDrops,
+    testDryAddMapReactor,
+    testDryRemoveMapReactor,
+    testDryAddReactorDrop,
+    testDryRemoveReactorDrop,
     testDryAddMapSpawn,
     testDryRemoveMapSpawn,
     testDryAddShopItem,
