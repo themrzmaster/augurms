@@ -190,14 +190,14 @@ ipcMain.handle("launcher:downloadUpdates", async (_, updates) => {
       });
     };
 
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 5;
     let success = false;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         sendProgress(0, attempt > 1 ? `Retry ${attempt}/${MAX_RETRIES}` : undefined);
 
-        await downloadFile(file.url, destPath, (percent) => sendProgress(percent));
+        await downloadFile(file.url, destPath, file.size, (percent) => sendProgress(percent));
 
         // Verify file size
         const stats = fs.statSync(destPath);
@@ -210,6 +210,8 @@ ipcMain.handle("launcher:downloadUpdates", async (_, updates) => {
           sendProgress(100, "Verifying...");
           const localHash = await hashFile(destPath);
           if (localHash !== file.hash) {
+            // Hash failed — delete and retry from scratch
+            try { fs.unlinkSync(destPath); } catch {}
             throw new Error(`Hash mismatch after download`);
           }
         }
@@ -220,8 +222,13 @@ ipcMain.handle("launcher:downloadUpdates", async (_, updates) => {
         if (attempt === MAX_RETRIES) {
           return { success: false, error: `Failed to download ${file.name}: ${err.message}` };
         }
-        // Clean up partial file before retry
-        try { fs.unlinkSync(destPath); } catch {}
+        // Only delete partial file for non-resumable errors
+        // Resume-capable: keep the partial file so next attempt uses Range header
+        if (err.message && err.message.includes("Hash mismatch")) {
+          try { fs.unlinkSync(destPath); } catch {}
+        }
+        // Brief backoff before retry
+        await new Promise(r => setTimeout(r, 1000 * attempt));
       }
     }
   }
@@ -267,23 +274,51 @@ function hashFile(filePath) {
   });
 }
 
-function downloadFile(url, dest, onProgress) {
+function downloadFile(url, dest, expectedSize, onProgress) {
   return new Promise((resolve, reject) => {
     const mod = url.startsWith("https") ? https : http;
-    mod.get(url, (res) => {
+
+    // Check for existing partial file to resume
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    let existingSize = 0;
+    try { existingSize = fs.statSync(dest).size; } catch {}
+
+    const headers = {};
+    if (existingSize > 0 && expectedSize && existingSize < expectedSize) {
+      headers["Range"] = `bytes=${existingSize}-`;
+    } else if (existingSize > 0) {
+      // File exists but is same size or larger — start fresh
+      existingSize = 0;
+    }
+
+    const req = mod.get(url, { headers, timeout: 30000 }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return downloadFile(res.headers.location, dest, onProgress).then(resolve).catch(reject);
+        res.resume(); // drain the response
+        return downloadFile(res.headers.location, dest, expectedSize, onProgress).then(resolve).catch(reject);
       }
-      if (res.statusCode !== 200) {
+
+      const isResume = res.statusCode === 206;
+      if (res.statusCode !== 200 && res.statusCode !== 206) {
+        res.resume();
         return reject(new Error(`HTTP ${res.statusCode}`));
       }
 
-      const totalSize = parseInt(res.headers["content-length"], 10) || 0;
-      let downloaded = 0;
+      // If server doesn't support Range, start from scratch
+      if (!isResume && existingSize > 0) {
+        existingSize = 0;
+      }
 
-      // Ensure parent directory exists
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      const fileStream = fs.createWriteStream(dest);
+      const contentLength = parseInt(res.headers["content-length"], 10) || 0;
+      const totalSize = isResume ? existingSize + contentLength : (contentLength || expectedSize || 0);
+      let downloaded = existingSize;
+
+      const fileStream = fs.createWriteStream(dest, isResume ? { flags: "a" } : {});
+
+      // Socket timeout: abort if no data for 30 seconds
+      res.socket?.setTimeout(30000);
+      res.socket?.on("timeout", () => {
+        req.destroy(new Error("Download stalled (30s timeout)"));
+      });
 
       res.on("data", (chunk) => {
         downloaded += chunk.length;
@@ -291,8 +326,25 @@ function downloadFile(url, dest, onProgress) {
       });
 
       res.pipe(fileStream);
-      fileStream.on("finish", () => { fileStream.close(); resolve(); });
-      fileStream.on("error", reject);
-    }).on("error", reject);
+
+      fileStream.on("finish", () => {
+        fileStream.close(() => resolve());
+      });
+
+      fileStream.on("error", (err) => {
+        fileStream.close();
+        reject(err);
+      });
+
+      res.on("error", (err) => {
+        fileStream.close();
+        reject(err);
+      });
+    });
+
+    req.on("error", reject);
+    req.on("timeout", () => {
+      req.destroy(new Error("Connection timeout"));
+    });
   });
 }

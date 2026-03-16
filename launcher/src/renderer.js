@@ -27,7 +27,8 @@ function setupControls() {
   window.augur.onDownloadProgress((data) => {
     const overall = ((data.index + data.percent / 100) / data.total) * 100;
     $("progress-bar").style.width = overall + "%";
-    $("progress-text").textContent = `${data.file} (${data.percent}%)`;
+    const statusSuffix = data.status ? ` - ${data.status}` : "";
+    $("progress-text").textContent = `${data.file} (${data.percent}%)${statusSuffix}`;
     $("btn-play-text").textContent = `UPDATING ${Math.round(overall)}%`;
   });
 }
