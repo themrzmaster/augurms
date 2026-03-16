@@ -247,47 +247,651 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
 // ---- OpenAI-format tool schemas ----
 
 const toolSchemas: OpenAI.ChatCompletionTool[] = [
-  { type: "function", function: { name: "get_game_analytics", description: "Get game analytics: economy, progression, activity, health. Always call with section='all' first.", parameters: { type: "object", properties: { section: { type: "string", enum: ["all", "economy", "progression", "activity", "health"] } }, required: ["section"] } } },
-  { type: "function", function: { name: "search_characters", description: "Search characters by name.", parameters: { type: "object", properties: { query: { type: "string" } } } } },
-  { type: "function", function: { name: "get_character", description: "Get full character details by ID.", parameters: { type: "object", properties: { characterId: { type: "number" } }, required: ["characterId"] } } },
-  { type: "function", function: { name: "update_character", description: "Update character stats. Takes effect on relog.", parameters: { type: "object", properties: { characterId: { type: "number" }, changes: { type: "object" } }, required: ["characterId", "changes"] } } },
-  { type: "function", function: { name: "give_item_to_character", description: "Give an item to a character.", parameters: { type: "object", properties: { characterId: { type: "number" }, itemId: { type: "number" }, quantity: { type: "number" } }, required: ["characterId", "itemId"] } } },
-  { type: "function", function: { name: "search_mobs", description: "Search monsters by name or ID.", parameters: { type: "object", properties: { query: { type: "string" } } } } },
-  { type: "function", function: { name: "get_mob", description: "Get mob stats.", parameters: { type: "object", properties: { mobId: { type: "number" } }, required: ["mobId"] } } },
-  { type: "function", function: { name: "update_mob", description: "Update mob stats.", parameters: { type: "object", properties: { mobId: { type: "number" }, changes: { type: "object" } }, required: ["mobId", "changes"] } } },
-  { type: "function", function: { name: "batch_update_mobs", description: "Update multiple mobs at once (max 50).", parameters: { type: "object", properties: { mobs: { type: "array", items: { type: "object", properties: { id: { type: "number" }, changes: { type: "object" } }, required: ["id", "changes"] } } }, required: ["mobs"] } } },
-  { type: "function", function: { name: "search_items", description: "Search items by name. Filter by category.", parameters: { type: "object", properties: { query: { type: "string" }, category: { type: "string", enum: ["all", "equip", "consume", "etc", "cash"] } } } } },
-  { type: "function", function: { name: "get_item", description: "Get item details.", parameters: { type: "object", properties: { itemId: { type: "number" } }, required: ["itemId"] } } },
-  { type: "function", function: { name: "get_mob_drops", description: "Get drop table for a mob.", parameters: { type: "object", properties: { mobId: { type: "number" } }, required: ["mobId"] } } },
-  { type: "function", function: { name: "add_mob_drop", description: "Add an item to a mob's drop table.", parameters: { type: "object", properties: { mobId: { type: "number" }, itemId: { type: "number" }, chance: { type: "number" }, minQuantity: { type: "number" }, maxQuantity: { type: "number" } }, required: ["mobId", "itemId", "chance"] } } },
-  { type: "function", function: { name: "remove_mob_drop", description: "Remove an item from a mob's drop table.", parameters: { type: "object", properties: { mobId: { type: "number" }, itemId: { type: "number" } }, required: ["mobId", "itemId"] } } },
-  { type: "function", function: { name: "batch_update_drops", description: "Bulk update drop tables.", parameters: { type: "object", properties: { changes: { type: "array", items: { type: "object" } } }, required: ["changes"] } } },
-  { type: "function", function: { name: "search_maps", description: "Search maps by name or ID.", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } } },
-  { type: "function", function: { name: "get_map", description: "Get map data: spawns, portals.", parameters: { type: "object", properties: { mapId: { type: "number" } }, required: ["mapId"] } } },
-  { type: "function", function: { name: "add_map_spawn", description: "Add a mob or NPC spawn to a map.", parameters: { type: "object", properties: { mapId: { type: "number" }, type: { type: "string", enum: ["m", "n"] }, lifeId: { type: "number" }, x: { type: "number" }, y: { type: "number" } }, required: ["mapId", "type", "lifeId", "x", "y"] } } },
-  { type: "function", function: { name: "remove_map_spawn", description: "Remove a spawn from a map.", parameters: { type: "object", properties: { mapId: { type: "number" }, type: { type: "string", enum: ["m", "n"] }, lifeId: { type: "number" } }, required: ["mapId", "type", "lifeId"] } } },
-  { type: "function", function: { name: "get_shop_items", description: "Get items sold by a shop.", parameters: { type: "object", properties: { shopId: { type: "number" } }, required: ["shopId"] } } },
-  { type: "function", function: { name: "add_shop_item", description: "Add an item to a shop.", parameters: { type: "object", properties: { shopId: { type: "number" }, itemId: { type: "number" }, price: { type: "number" } }, required: ["shopId", "itemId", "price"] } } },
-  { type: "function", function: { name: "update_shop_price", description: "Change the price of a shop item.", parameters: { type: "object", properties: { shopId: { type: "number" }, itemId: { type: "number" }, price: { type: "number" } }, required: ["shopId", "itemId", "price"] } } },
-  { type: "function", function: { name: "remove_shop_item", description: "Remove an item from a shop.", parameters: { type: "object", properties: { shopId: { type: "number" }, itemId: { type: "number" } }, required: ["shopId", "itemId"] } } },
-  { type: "function", function: { name: "get_rates", description: "Get current server rates.", parameters: { type: "object", properties: {} } } },
-  { type: "function", function: { name: "update_rates", description: "Update server rates (1-50). Keys: exp_rate, meso_rate, drop_rate, boss_drop_rate, quest_rate.", parameters: { type: "object", properties: { rates: { type: "object" } }, required: ["rates"] } } },
-  { type: "function", function: { name: "get_config", description: "Get the full server config.", parameters: { type: "object", properties: {} } } },
-  { type: "function", function: { name: "update_config", description: "Update a config value by dot-path.", parameters: { type: "object", properties: { path: { type: "string" }, value: {} }, required: ["path", "value"] } } },
-  { type: "function", function: { name: "create_event", description: "Create a dynamic event: spawn mobs, add bonus drops, set announcement.", parameters: { type: "object", properties: { name: { type: "string" }, mapId: { type: "number" }, mobs: { type: "array", items: { type: "object" } }, bonusDrops: { type: "array", items: { type: "object" } }, announcement: { type: "string" } }, required: ["name"] } } },
-  { type: "function", function: { name: "get_active_events", description: "List active custom events.", parameters: { type: "object", properties: {} } } },
-  { type: "function", function: { name: "cleanup_event", description: "Remove custom event spawns/drops.", parameters: { type: "object", properties: { mapId: { type: "number" }, mobId: { type: "number" }, clearGlobalDrops: { type: "boolean" } } } } },
-  { type: "function", function: { name: "get_server_status", description: "Check if the game server is running.", parameters: { type: "object", properties: {} } } },
-  { type: "function", function: { name: "get_server_logs", description: "Read recent server logs.", parameters: { type: "object", properties: { lines: { type: "number" } } } } },
-  { type: "function", function: { name: "set_server_message", description: "Set the server announcement message.", parameters: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } } },
-  { type: "function", function: { name: "get_my_history", description: "View your past sessions and actions.", parameters: { type: "object", properties: { limit: { type: "number" }, type: { type: "string", enum: ["sessions", "actions", "all"] } } } } },
-  { type: "function", function: { name: "get_snapshots", description: "Get recent game state snapshots with trends.", parameters: { type: "object", properties: { limit: { type: "number" } } } } },
-  { type: "function", function: { name: "get_goals", description: "View your goals and their progress.", parameters: { type: "object", properties: { status: { type: "string", enum: ["active", "achieved", "abandoned", "all"] } } } } },
-  { type: "function", function: { name: "create_goal", description: "Create a new persistent goal.", parameters: { type: "object", properties: { goal: { type: "string" }, targetMetric: { type: "string" }, targetValue: { type: "number" }, currentValue: { type: "number" } }, required: ["goal", "targetMetric", "targetValue"] } } },
-  { type: "function", function: { name: "update_goal", description: "Update a goal's status or current value.", parameters: { type: "object", properties: { id: { type: "number" }, status: { type: "string", enum: ["active", "achieved", "abandoned"] }, currentValue: { type: "number" }, targetValue: { type: "number" } }, required: ["id"] } } },
-  { type: "function", function: { name: "get_trends", description: "Get computed trend analysis over a time period.", parameters: { type: "object", properties: { hours: { type: "number" } } } } },
-  { type: "function", function: { name: "take_snapshot", description: "Take a snapshot of the current game state.", parameters: { type: "object", properties: {} } } },
-  { type: "function", function: { name: "publish_client_update", description: "Publish a client update. Bumps manifest version so launchers detect changes. Most GM changes (drops, shops, spawns, rates) are DB-only and do NOT need this. Only use for WZ-level changes (new items/mobs) or client patches.", parameters: { type: "object", properties: { version: { type: "string", description: "New version string (e.g. 1.1.0)" }, message: { type: "string", description: "What changed for players" }, files: { type: "array", description: "Files that changed. Include name and new hash/size.", items: { type: "object", properties: { name: { type: "string" }, hash: { type: "string" }, size: { type: "number" } } } } }, required: ["version", "message"] } } },
+  // ── Analytics & Observation ──
+  {
+    type: "function",
+    function: {
+      name: "get_game_analytics",
+      description: "Get comprehensive game analytics. Returns economy (total meso, avg meso/player, meso distribution brackets, top 20 items by count, storage meso), progression (level distribution by bucket, job distribution with names, avg/max level, recent EXP gains), activity (map popularity, boss kills today/weekly, GM distribution, new accounts last 7d), and health (current rates, server config, DB stats, automated warnings). Call with section='all' for a full picture, or a specific section to reduce noise.",
+      parameters: { type: "object", properties: { section: { type: "string", enum: ["all", "economy", "progression", "activity", "health"], description: "Which analytics section to fetch. Use 'all' for first check of a session." } }, required: ["section"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_snapshots",
+      description: "Get recent game state snapshots with computed deltas between consecutive snapshots. Each snapshot includes: totalMeso, avgMesoPerPlayer, storageMeso, totalItems, totalCharacters, avgLevel, maxLevel, expRate, mesoRate, dropRate. Deltas show: mesoChange (absolute + %), avgLevelChange, itemChange, characterChange.",
+      parameters: { type: "object", properties: { limit: { type: "number", description: "Number of snapshots to return (default 10, newest first)" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_trends",
+      description: "Get computed trend analysis over a time period. Returns: economy trends (meso change %, inflation/day, storage meso, avg meso/player), progression (avg level change, level velocity/day), item trends (count change %), player trends (character/account changes), rate change history, and auto-generated alerts (inflation >10%/day, rapid leveling >5lvl/day, item surge/drop >20%, declining players).",
+      parameters: { type: "object", properties: { hours: { type: "number", description: "Time window in hours (default 48, max 168 = 1 week)" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "take_snapshot",
+      description: "Capture a point-in-time snapshot of the game state and save it to the database. Captures: total meso (characters + storage), item count, character count, avg/max level, level/job distributions, account stats, boss kills today, current rates. Use at the start of each session to establish a baseline.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_server_status",
+      description: "Check if the game server process is running. Returns: {status: 'running'|'stopped', players: number}.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_server_logs",
+      description: "Read recent game server logs. Only works in local dev (uses Docker). Will return an error in production — do not rely on this tool for routine checks.",
+      parameters: { type: "object", properties: { lines: { type: "number", description: "Number of log lines to return (default 100)" } } },
+    },
+  },
+
+  // ── Character Management ──
+  {
+    type: "function",
+    function: {
+      name: "search_characters",
+      description: "Search characters by name. Returns list of characters with basic info (id, name, level, job, map, meso). Omit query to list all characters.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Character name to search for (partial match)" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_character",
+      description: "Get full character details by ID including: name, level, job, str/dex/int/luk, hp/mp, meso, fame, map, exp, ap, sp, gm level, and inventory.",
+      parameters: { type: "object", properties: { characterId: { type: "number", description: "Character database ID" } }, required: ["characterId"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_character",
+      description: "Update character stats (takes effect when player relogs). Allowed fields: level, str, dex, int, luk, maxhp, maxmp, meso, fame, ap, sp, job, map, exp, hp, mp, gm.",
+      parameters: {
+        type: "object",
+        properties: {
+          characterId: { type: "number", description: "Character database ID" },
+          changes: {
+            type: "object",
+            description: "Fields to update. Example: {level: 50, meso: 100000, str: 50}",
+            properties: {
+              level: { type: "number" }, str: { type: "number" }, dex: { type: "number" },
+              int: { type: "number" }, luk: { type: "number" }, maxhp: { type: "number" },
+              maxmp: { type: "number" }, meso: { type: "number" }, fame: { type: "number" },
+              ap: { type: "number" }, sp: { type: "number" }, job: { type: "number" },
+              map: { type: "number" }, exp: { type: "number" }, hp: { type: "number" },
+              mp: { type: "number" }, gm: { type: "number" },
+            },
+          },
+        },
+        required: ["characterId", "changes"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "give_item_to_character",
+      description: "Add an item to a character's inventory. The inventory type (equip/use/etc/cash) is determined automatically from the item ID range.",
+      parameters: {
+        type: "object",
+        properties: {
+          characterId: { type: "number", description: "Character database ID" },
+          itemId: { type: "number", description: "Item ID (use search_items to find IDs)" },
+          quantity: { type: "number", description: "Stack quantity (default 1). Equips are always 1." },
+        },
+        required: ["characterId", "itemId"],
+      },
+    },
+  },
+
+  // ── Mob Management ──
+  {
+    type: "function",
+    function: {
+      name: "search_mobs",
+      description: "Search monsters by name or ID. Returns up to 50 results with: id, name, level, maxHP, exp, and basic stats. Omit query to browse.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Mob name or numeric ID to search" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_mob",
+      description: "Get full mob stats: level, maxHP, maxMP, exp, PADamage, MADamage, PDDamage, MDDamage, acc, eva, speed, boss, undead, bodyAttack, pushed.",
+      parameters: { type: "object", properties: { mobId: { type: "number", description: "Mob ID" } }, required: ["mobId"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_mob",
+      description: "Update a mob's stats. Changes modify the server WZ XML files. Allowed stats: level, maxHP, maxMP, exp, PADamage, MADamage, PDDamage, MDDamage, acc, eva, speed, boss, undead, bodyAttack, pushed.",
+      parameters: {
+        type: "object",
+        properties: {
+          mobId: { type: "number", description: "Mob ID" },
+          changes: {
+            type: "object",
+            description: "Stats to change. Example: {maxHP: 5000, exp: 200, PADamage: 100}",
+            properties: {
+              level: { type: "number" }, maxHP: { type: "number" }, maxMP: { type: "number" },
+              exp: { type: "number" }, PADamage: { type: "number" }, MADamage: { type: "number" },
+              PDDamage: { type: "number" }, MDDamage: { type: "number" }, acc: { type: "number" },
+              eva: { type: "number" }, speed: { type: "number" }, boss: { type: "number" },
+              undead: { type: "number" }, bodyAttack: { type: "number" }, pushed: { type: "number" },
+            },
+          },
+        },
+        required: ["mobId", "changes"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "batch_update_mobs",
+      description: "Update multiple mobs at once (max 50). Each entry specifies a mob ID and the stat changes to apply. Same allowed stats as update_mob.",
+      parameters: {
+        type: "object",
+        properties: {
+          mobs: {
+            type: "array",
+            description: "Array of mob updates",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "number", description: "Mob ID" },
+                changes: { type: "object", description: "Stats to change (same keys as update_mob)" },
+              },
+              required: ["id", "changes"],
+            },
+          },
+        },
+        required: ["mobs"],
+      },
+    },
+  },
+
+  // ── Item Lookup ──
+  {
+    type: "function",
+    function: {
+      name: "search_items",
+      description: "Search items by name, with optional category filter. Returns up to 50 results with: itemId, name, description, category. Item ID ranges: 1000000-1999999=equip, 2000000-2999999=consume, 4000000-4999999=etc, 5000000-5999999=cash.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Item name to search (partial match)" },
+          category: { type: "string", enum: ["all", "equip", "consume", "etc", "cash"], description: "Filter by category (default: all)" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_item",
+      description: "Get full item details by ID: name, description, category, stats (for equips), price, and other properties.",
+      parameters: { type: "object", properties: { itemId: { type: "number", description: "Item ID" } }, required: ["itemId"] },
+    },
+  },
+
+  // ── Drop Tables ──
+  {
+    type: "function",
+    function: {
+      name: "get_mob_drops",
+      description: "Get the full drop table for a mob. Returns array of drops with: itemId, chance (out of 1,000,000 — so 100000 = 10%), minQuantity, maxQuantity, questId.",
+      parameters: { type: "object", properties: { mobId: { type: "number", description: "Mob ID" } }, required: ["mobId"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_mob_drop",
+      description: "Add an item to a mob's drop table. Chance is out of 1,000,000 (e.g. 100000 = 10%, 10000 = 1%, 1000 = 0.1%). Changes are live immediately.",
+      parameters: {
+        type: "object",
+        properties: {
+          mobId: { type: "number", description: "Mob ID" },
+          itemId: { type: "number", description: "Item ID to drop" },
+          chance: { type: "number", description: "Drop chance out of 1,000,000 (100000 = 10%)" },
+          minQuantity: { type: "number", description: "Minimum drop quantity (default 1)" },
+          maxQuantity: { type: "number", description: "Maximum drop quantity (default 1)" },
+        },
+        required: ["mobId", "itemId", "chance"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_mob_drop",
+      description: "Remove an item from a mob's drop table. Takes effect immediately.",
+      parameters: {
+        type: "object",
+        properties: {
+          mobId: { type: "number", description: "Mob ID" },
+          itemId: { type: "number", description: "Item ID to remove from drops" },
+        },
+        required: ["mobId", "itemId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "batch_update_drops",
+      description: "Bulk update drop tables for multiple mobs (max 100 operations). Each entry targets one mob and can add, remove, or update drops in a single call.",
+      parameters: {
+        type: "object",
+        properties: {
+          changes: {
+            type: "array",
+            description: "Array of per-mob drop changes",
+            items: {
+              type: "object",
+              properties: {
+                mobId: { type: "number", description: "Mob ID" },
+                add: {
+                  type: "array",
+                  description: "Drops to add",
+                  items: {
+                    type: "object",
+                    properties: {
+                      itemId: { type: "number" },
+                      chance: { type: "number", description: "Out of 1,000,000" },
+                      minQuantity: { type: "number" },
+                      maxQuantity: { type: "number" },
+                      questId: { type: "number" },
+                    },
+                    required: ["itemId"],
+                  },
+                },
+                remove: {
+                  type: "array",
+                  description: "Drops to remove",
+                  items: { type: "object", properties: { itemId: { type: "number" } }, required: ["itemId"] },
+                },
+                update: {
+                  type: "array",
+                  description: "Existing drops to modify (change chance/quantities)",
+                  items: {
+                    type: "object",
+                    properties: {
+                      itemId: { type: "number" },
+                      chance: { type: "number" },
+                      minQuantity: { type: "number" },
+                      maxQuantity: { type: "number" },
+                    },
+                    required: ["itemId"],
+                  },
+                },
+              },
+              required: ["mobId"],
+            },
+          },
+        },
+        required: ["changes"],
+      },
+    },
+  },
+
+  // ── Maps & Spawns ──
+  {
+    type: "function",
+    function: {
+      name: "search_maps",
+      description: "Search maps by name or numeric ID. Returns matching maps with: mapId, name, streetName, and mob/NPC spawn counts.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Map name or ID to search" } }, required: ["query"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_map",
+      description: "Get full map data including: name, streetName, all mob and NPC spawns (with coordinates), and portals. Footholds are excluded to save tokens. Use this to find valid spawn coordinates before adding spawns.",
+      parameters: { type: "object", properties: { mapId: { type: "number", description: "Map ID" } }, required: ["mapId"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_map_spawn",
+      description: "Add a mob or NPC spawn to a map. The spawn is written to the plife table and takes effect on server restart. Use get_map first to find valid x,y coordinates from existing spawns.",
+      parameters: {
+        type: "object",
+        properties: {
+          mapId: { type: "number", description: "Map ID" },
+          type: { type: "string", enum: ["m", "n"], description: "'m' for mob, 'n' for NPC" },
+          lifeId: { type: "number", description: "Mob or NPC ID to spawn" },
+          x: { type: "number", description: "X coordinate (use coords from existing spawns via get_map)" },
+          y: { type: "number", description: "Y coordinate" },
+        },
+        required: ["mapId", "type", "lifeId", "x", "y"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_map_spawn",
+      description: "Remove a mob or NPC spawn from a map. Removes from plife table. Takes effect on server restart.",
+      parameters: {
+        type: "object",
+        properties: {
+          mapId: { type: "number", description: "Map ID" },
+          type: { type: "string", enum: ["m", "n"], description: "'m' for mob, 'n' for NPC" },
+          lifeId: { type: "number", description: "Mob or NPC ID to remove" },
+        },
+        required: ["mapId", "type", "lifeId"],
+      },
+    },
+  },
+
+  // ── Shops ──
+  {
+    type: "function",
+    function: {
+      name: "get_shop_items",
+      description: "Get all items sold by a shop, including: itemId, price, and position. Use search_maps or NPC data to find shop IDs.",
+      parameters: { type: "object", properties: { shopId: { type: "number", description: "Shop ID (from shops table, linked to NPC ID)" } }, required: ["shopId"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_shop_item",
+      description: "Add an item for sale in a shop. Price is in meso.",
+      parameters: {
+        type: "object",
+        properties: {
+          shopId: { type: "number", description: "Shop ID" },
+          itemId: { type: "number", description: "Item ID to sell" },
+          price: { type: "number", description: "Price in meso" },
+        },
+        required: ["shopId", "itemId", "price"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_shop_price",
+      description: "Change the price of an item already in a shop.",
+      parameters: {
+        type: "object",
+        properties: {
+          shopId: { type: "number", description: "Shop ID" },
+          itemId: { type: "number", description: "Item ID" },
+          price: { type: "number", description: "New price in meso" },
+        },
+        required: ["shopId", "itemId", "price"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_shop_item",
+      description: "Remove an item from a shop so it's no longer for sale.",
+      parameters: {
+        type: "object",
+        properties: {
+          shopId: { type: "number", description: "Shop ID" },
+          itemId: { type: "number", description: "Item ID to remove" },
+        },
+        required: ["shopId", "itemId"],
+      },
+    },
+  },
+
+  // ── Server Rates ──
+  {
+    type: "function",
+    function: {
+      name: "get_rates",
+      description: "Get current server rates. Returns both world rates (exp_rate, meso_rate, drop_rate, boss_drop_rate, quest_rate, fishing_rate, travel_rate) and server rates (EQUIP_EXP_RATE, PQ_BONUS_EXP_RATE, PARTY_BONUS_EXP_RATE, RESPAWN_INTERVAL, etc).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_rates",
+      description: "Update server rates. Values must be between 1 and 50. Changes are pushed live to the game server immediately (no restart needed). Rate changes are a major lever — prefer events/content over rate adjustments.",
+      parameters: {
+        type: "object",
+        properties: {
+          rates: {
+            type: "object",
+            description: "Rates to update. Example: {exp_rate: 5, drop_rate: 3}",
+            properties: {
+              exp_rate: { type: "number" }, meso_rate: { type: "number" },
+              drop_rate: { type: "number" }, boss_drop_rate: { type: "number" },
+              quest_rate: { type: "number" },
+            },
+          },
+        },
+        required: ["rates"],
+      },
+    },
+  },
+
+  // ── Config ──
+  {
+    type: "function",
+    function: {
+      name: "get_config",
+      description: "Get the full server config.yaml as JSON. Includes worlds array (rates, channels, messages), server settings (respawn, autoban, autosave), and all other configuration.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_config",
+      description: "Update a single config value by dot-notation path. Rate-related keys (exp_rate, meso_rate, drop_rate, boss_drop_rate) are auto-pushed live to the game server. Use update_rates instead for rate changes.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Dot-path to config key. Example: 'worlds.0.exp_rate' or 'server.RESPAWN_INTERVAL'" },
+          value: { description: "New value (string, number, or boolean)" },
+        },
+        required: ["path", "value"],
+      },
+    },
+  },
+
+  // ── Events ──
+  {
+    type: "function",
+    function: {
+      name: "create_event",
+      description: "Create a dynamic event combining mob spawns, bonus drops, and a server announcement. Mob spawns are added to the plife table (take effect on restart). Drop changes are live. Global drops (bonusDrops without mobId) drop from ALL mobs server-wide.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Event name (stored in global drop comments for cleanup)" },
+          mapId: { type: "number", description: "Map ID to spawn mobs on" },
+          mobs: {
+            type: "array",
+            description: "Mobs to spawn on the map",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "number", description: "Mob ID" },
+                count: { type: "number", description: "Number of spawns (default 1, max 20)" },
+                x: { type: "number", description: "X coordinate" },
+                y: { type: "number", description: "Y coordinate" },
+                mobtime: { type: "number", description: "Respawn time in seconds (0 = instant)" },
+              },
+              required: ["id"],
+            },
+          },
+          bonusDrops: {
+            type: "array",
+            description: "Bonus item drops. Include mobId for mob-specific drops, or omit mobId for global drops (all mobs).",
+            items: {
+              type: "object",
+              properties: {
+                mobId: { type: "number", description: "Mob ID (omit for global drop from all mobs)" },
+                itemId: { type: "number", description: "Item ID to drop" },
+                chance: { type: "number", description: "Out of 1,000,000 (default: 100000 = 10% for mob drops, 50000 = 5% for global)" },
+                minQuantity: { type: "number", description: "Min quantity (default 1)" },
+                maxQuantity: { type: "number", description: "Max quantity (default 1)" },
+              },
+              required: ["itemId"],
+            },
+          },
+          announcement: { type: "string", description: "Server announcement message shown to players on channel select" },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_active_events",
+      description: "List all active custom events: custom mob/NPC spawns from plife table, and global drops from drop_data_global. Use to check what events are currently running before creating new ones or cleaning up.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cleanup_event",
+      description: "Remove custom event content. Provide mapId to remove spawns from a specific map, mobId to remove a specific mob's spawns, and/or clearGlobalDrops to remove all event-tagged global drops.",
+      parameters: {
+        type: "object",
+        properties: {
+          mapId: { type: "number", description: "Remove all custom spawns from this map" },
+          mobId: { type: "number", description: "Remove spawns of this specific mob (combine with mapId for precision)" },
+          clearGlobalDrops: { type: "boolean", description: "Remove all global drops tagged as 'Event:*' (default false)" },
+        },
+      },
+    },
+  },
+
+  // ── Communication ──
+  {
+    type: "function",
+    function: {
+      name: "set_server_message",
+      description: "Set the server announcement shown to players on the channel select screen. Updates both server_message and event_message in config. Note: requires server restart to appear in-game. Must be pure ASCII (no emoji/unicode — the server YAML parser crashes on non-ASCII).",
+      parameters: {
+        type: "object",
+        properties: { message: { type: "string", description: "Announcement text (ASCII only, no emoji)" } },
+        required: ["message"],
+      },
+    },
+  },
+
+  // ── History & Memory ──
+  {
+    type: "function",
+    function: {
+      name: "get_my_history",
+      description: "View your past GM sessions and individual tool actions. Sessions show: trigger type, prompt, summary, status, changes count. Actions show: tool name, input params, result, reasoning, category.",
+      parameters: {
+        type: "object",
+        properties: {
+          limit: { type: "number", description: "Max results to return (default 10)" },
+          type: { type: "string", enum: ["sessions", "actions", "all"], description: "What to return (default 'all')" },
+        },
+      },
+    },
+  },
+
+  // ── Goals ──
+  {
+    type: "function",
+    function: {
+      name: "get_goals",
+      description: "View your persistent goals. Goals track long-term objectives (e.g. 'reduce inflation to <5%/day', 'get avg level above 50'). Each has a target metric and value, and a current value you update over time.",
+      parameters: {
+        type: "object",
+        properties: { status: { type: "string", enum: ["active", "achieved", "abandoned", "all"], description: "Filter by status (default: all)" } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_goal",
+      description: "Create a new persistent goal to track across sessions. Goals persist until you mark them achieved or abandoned. Use meaningful metric names you can measure from analytics.",
+      parameters: {
+        type: "object",
+        properties: {
+          goal: { type: "string", description: "Human-readable goal description. Example: 'Reduce daily meso inflation below 5%'" },
+          targetMetric: { type: "string", description: "Metric name to track. Example: 'meso_inflation_pct_day', 'avg_level', 'active_players_7d'" },
+          targetValue: { type: "number", description: "Target value to achieve" },
+          currentValue: { type: "number", description: "Current value of the metric (optional, set from analytics)" },
+        },
+        required: ["goal", "targetMetric", "targetValue"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_goal",
+      description: "Update a goal's progress or status. Use to record current metric values from analytics, or mark a goal as achieved/abandoned.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "number", description: "Goal ID" },
+          status: { type: "string", enum: ["active", "achieved", "abandoned"], description: "New status" },
+          currentValue: { type: "number", description: "Updated current value from analytics" },
+          targetValue: { type: "number", description: "Revised target (if needed)" },
+        },
+        required: ["id"],
+      },
+    },
+  },
+
+  // ── Client Update ──
+  {
+    type: "function",
+    function: {
+      name: "publish_client_update",
+      description: "Publish a client update by bumping the launcher manifest version. IMPORTANT: Most GM changes (drops, shops, spawns, rates, mob stats) are DB-only or config-only and do NOT need this. Only use for WZ-level changes (new items/mobs that need client-side data) or client exe patches. Players must re-launch to get updates.",
+      parameters: {
+        type: "object",
+        properties: {
+          version: { type: "string", description: "New version string (e.g. '1.1.0')" },
+          message: { type: "string", description: "What changed for players" },
+          files: {
+            type: "array",
+            description: "Files that changed (only if you know the new hash/size)",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string", description: "Filename (e.g. 'Item.wz')" },
+                hash: { type: "string", description: "New SHA256 hash" },
+                size: { type: "number", description: "New file size in bytes" },
+              },
+            },
+          },
+        },
+        required: ["version", "message"],
+      },
+    },
+  },
 ];
 
 // ---- Build historical context for system prompt ----
