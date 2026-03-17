@@ -327,7 +327,7 @@ export default function LandingPage() {
                       Download and run the launcher installer. It will auto-detect your MapleStory folder (or let you browse to it). The launcher <strong>automatically downloads and updates</strong> all game files &mdash; no manual file copying needed.
                     </p>
                     <a
-                      href="https://github.com/themrzmaster/augurms/releases/download/launcher-v1.0.1/AugurMS.Setup.1.0.1.exe"
+                      href="https://github.com/themrzmaster/augurms/releases/download/launcher-v1.0.2/AugurMS.Setup.1.0.2.exe"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 rounded-lg bg-accent-gold px-5 py-2.5 font-semibold text-bg-primary transition hover:bg-accent-gold/90 hover:shadow-[0_0_20px_rgba(245,197,66,0.3)]"
