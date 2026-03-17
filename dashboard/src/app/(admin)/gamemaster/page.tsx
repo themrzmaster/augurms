@@ -376,15 +376,64 @@ function GoalsPanel() {
   );
 }
 
+// ---- Past Session as compact card ----
+function PastSessionCard({ session, isScheduled }: { session: PastSession; isScheduled: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className={`rounded-xl border overflow-hidden ${
+      isScheduled ? "border-accent-purple/20 bg-accent-purple/[0.03]" : "border-border bg-bg-card"
+    }`}>
+      <button onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-bg-card-hover/50 transition-colors">
+        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+          session.status === "complete" ? "bg-accent-green" : session.status === "error" ? "bg-accent-red" : "bg-accent-blue"
+        }`} />
+        <span className={`text-[10px] font-semibold uppercase shrink-0 ${
+          isScheduled ? "text-accent-purple" : "text-accent-blue"
+        }`}>{isScheduled ? "Cron" : "Manual"}</span>
+        <span className="text-[12px] text-text-primary flex-1 min-w-0 truncate">
+          {session.summary?.slice(0, 80) || session.prompt?.slice(0, 80) || "Session"}
+        </span>
+        {session.changesMade > 0 && (
+          <span className="text-[10px] text-accent-orange font-medium shrink-0">{session.changesMade} changes</span>
+        )}
+        <span className="text-[10px] text-text-muted shrink-0">{timeAgo(session.startedAt)}</span>
+        <span className={`text-[10px] text-text-muted transition-transform ${expanded ? "rotate-180" : ""}`}>&#9660;</span>
+      </button>
+      {expanded && session.summary && (
+        <div className="border-t border-border/40 px-4 py-3">
+          <div className="text-[12px] text-text-secondary whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
+            {session.summary}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Main Page ----
 export default function GameMasterPage() {
   const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [pastSessions, setPastSessions] = useState<PastSession[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [currentLog, setCurrentLog] = useState<LogEntry[]>([]);
   const [running, setRunning] = useState(false);
   const [currentSession, setCurrentSession] = useState<SessionInfo | null>(null);
   const [prompt, setPrompt] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Load past sessions on mount
+  useEffect(() => {
+    fetch("/api/gm/history?type=sessions&limit=30")
+      .then((r) => r.json())
+      .then((data) => {
+        const sessions: PastSession[] = data.sessions || [];
+        setPastSessions(sessions.reverse()); // oldest first
+      })
+      .catch(() => {})
+      .finally(() => setHistoryLoaded(true));
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -502,18 +551,33 @@ export default function GameMasterPage() {
       <div className="rounded-xl border border-border bg-bg-primary/50 overflow-hidden flex flex-col" style={{ height: "calc(100vh - 320px)", minHeight: "400px" }}>
         {/* Chat messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-          {chat.length === 0 && !running && (
+          {/* Past sessions from DB */}
+          {historyLoaded && pastSessions.length > 0 && (
+            <div className="space-y-2 pb-3 border-b border-border/30 mb-3">
+              <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Previous Sessions</p>
+              {pastSessions.map((s) => (
+                <PastSessionCard key={s.id} session={s} isScheduled={s.trigger === "scheduled"} />
+              ))}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {chat.length === 0 && !running && pastSessions.length === 0 && historyLoaded && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <span className="text-4xl mb-3 opacity-30">&#x2726;</span>
               <p className="text-sm text-text-muted">Send a message to the Game Master</p>
-              <div className="flex flex-wrap justify-center gap-1.5 mt-4">
-                {PRESET_PROMPTS.map((p) => (
-                  <button key={p.label} onClick={() => { setPrompt(p.prompt); }}
-                    className="rounded-full px-3 py-1.5 text-[11px] font-medium text-text-muted border border-border hover:text-text-primary hover:border-border-light transition-all">
-                    {p.label}
-                  </button>
-                ))}
-              </div>
+            </div>
+          )}
+
+          {/* Preset prompts - show when no active chat */}
+          {chat.length === 0 && !running && (
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {PRESET_PROMPTS.map((p) => (
+                <button key={p.label} onClick={() => { setPrompt(p.prompt); }}
+                  className="rounded-full px-3 py-1.5 text-[11px] font-medium text-text-muted border border-border hover:text-text-primary hover:border-border-light transition-all">
+                  {p.label}
+                </button>
+              ))}
             </div>
           )}
 
