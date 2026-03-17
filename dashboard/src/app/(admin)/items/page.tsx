@@ -10,6 +10,8 @@ interface Item {
   id: number;
   name: string;
   category: string;
+  quest?: boolean;
+  tradeable?: boolean;
 }
 
 const CATEGORIES = [
@@ -18,6 +20,13 @@ const CATEGORIES = [
   { key: "consume", label: "Consume", color: "text-accent-green" },
   { key: "etc", label: "Etc", color: "text-accent-purple" },
   { key: "cash", label: "Cash", color: "text-accent-orange" },
+];
+
+const FILTERS = [
+  { key: "none", label: "No filter" },
+  { key: "no_quest", label: "Non-quest only" },
+  { key: "quest", label: "Quest items" },
+  { key: "droppable", label: "Droppable (safe for spawn_drop)" },
 ];
 
 function getCategoryBadge(category: string) {
@@ -58,10 +67,11 @@ export default function ItemsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState("all");
+  const [activeFilter, setActiveFilter] = useState("none");
   const [searchTerm, setSearchTerm] = useState("");
   const router = useRouter();
 
-  const fetchItems = useCallback(async (query: string, category: string) => {
+  const fetchItems = useCallback(async (query: string, category: string, filter: string) => {
     setLoading(true);
     setError(null);
 
@@ -69,6 +79,7 @@ export default function ItemsPage() {
       const params = new URLSearchParams();
       if (query) params.set("q", query);
       if (category !== "all") params.set("category", category);
+      if (filter !== "none") params.set("filter", filter);
       const res = await fetch(`/api/items?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch");
       const data = await res.json();
@@ -80,22 +91,30 @@ export default function ItemsPage() {
     }
   }, []);
 
-  useEffect(() => { fetchItems("", "all"); }, [fetchItems]);
+  useEffect(() => { fetchItems("", "all", "none"); }, [fetchItems]);
 
   const handleSearch = useCallback(
     (value: string) => {
       setSearchTerm(value);
-      fetchItems(value, activeCategory);
+      fetchItems(value, activeCategory, activeFilter);
     },
-    [activeCategory, fetchItems]
+    [activeCategory, activeFilter, fetchItems]
   );
 
   const handleCategoryChange = useCallback(
     (category: string) => {
       setActiveCategory(category);
-      fetchItems(searchTerm, category);
+      fetchItems(searchTerm, category, activeFilter);
     },
-    [searchTerm, fetchItems]
+    [searchTerm, activeFilter, fetchItems]
+  );
+
+  const handleFilterChange = useCallback(
+    (filter: string) => {
+      setActiveFilter(filter);
+      fetchItems(searchTerm, activeCategory, filter);
+    },
+    [searchTerm, activeCategory, fetchItems]
   );
 
   return (
@@ -130,6 +149,23 @@ export default function ItemsPage() {
               }`}
             >
               {cat.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Property Filters */}
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => handleFilterChange(f.key)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 border ${
+                activeFilter === f.key
+                  ? "bg-accent-gold/10 text-accent-gold border-accent-gold/30"
+                  : "bg-bg-secondary text-text-muted border-border hover:text-text-primary hover:border-border-light"
+              }`}
+            >
+              {f.label}
             </button>
           ))}
         </div>
@@ -177,11 +213,18 @@ export default function ItemsPage() {
                 {item.name}
               </h3>
               <p className="text-xs text-text-muted mt-1">ID: {item.id}</p>
-              <span
-                className={`mt-2 inline-block rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${getCategoryBadge(item.category)}`}
-              >
-                {item.category}
-              </span>
+              <div className="mt-2 flex items-center gap-1.5">
+                <span
+                  className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${getCategoryBadge(item.category)}`}
+                >
+                  {item.category}
+                </span>
+                {item.quest && (
+                  <span className="inline-block rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-accent-red/10 text-accent-red border-accent-red/20">
+                    Quest
+                  </span>
+                )}
+              </div>
             </Card>
           ))}
         </div>

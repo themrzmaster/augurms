@@ -728,7 +728,7 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "spawn_drop",
-      description: "Spawn a visible item drop on the ground that players can pick up. Requires the game server to be running. Provide characterName to drop in front of an ONLINE player, or mapId+x+y to drop at specific coordinates. The item appears on the ground with the normal drop animation.",
+      description: "Spawn a visible item drop on the ground that players can pick up. Requires the game server to be running. Provide characterName to drop in front of an ONLINE player, or mapId+x+y to drop at specific coordinates. The item appears on the ground with the normal drop animation. IMPORTANT: Only use common consumable items (potions, scrolls, chairs) or equips. NEVER use ETC items (4000000+ range) as most are quest-locked and players cannot pick them up. Safe categories: consume (2000000+), equip (1000000+), cash (5000000+). Always verify with get_item first — if it has quest=1 or questId, do NOT use it.",
       parameters: {
         type: "object",
         properties: {
