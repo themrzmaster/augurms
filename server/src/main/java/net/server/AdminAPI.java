@@ -1,12 +1,15 @@
 package net.server;
 
 import client.Character;
+import client.inventory.InventoryType;
 import client.inventory.Item;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
+import constants.inventory.ItemConstants;
 import net.server.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import server.ItemInformationProvider;
 import server.maps.MapleMap;
 
 import java.awt.Point;
@@ -190,9 +193,26 @@ public class AdminAPI {
             dropPos = new Point(pos.x + 30, pos.y);
         }
 
-        // Create and spawn the item drop (FFA so anyone can pick it up)
-        Item item = new Item(itemId, (short) 0, (short) Math.min(quantity, 999));
-        map.spawnItemDrop(target, target, item, dropPos, true, false);
+        // Create item — use proper equip generation for equip items (matching !drop command)
+        ItemInformationProvider ii = ItemInformationProvider.getInstance();
+        int qty = Math.min(quantity, 999);
+        Item toDrop;
+        if (ItemConstants.getInventoryType(itemId) == InventoryType.EQUIP) {
+            toDrop = ii.getEquipById(itemId);
+        } else {
+            toDrop = new Item(itemId, (short) 0, (short) qty);
+        }
+        toDrop.setOwner("");
+
+        // Spawn on the map's event thread to match how GM commands work
+        final Character dropTarget = target;
+        final MapleMap dropMap = map;
+        final Point finalDropPos = dropPos;
+        dropMap.broadcastMessage(null); // no-op to ensure map is active
+        // Use TimerManager to run on game thread
+        server.TimerManager.getInstance().schedule(() -> {
+            dropMap.spawnItemDrop(dropTarget, dropTarget, toDrop, finalDropPos, true, true);
+        }, 0);
 
         log.info("Admin API: Dropped {}x item {} on map {} at ({},{})", quantity, itemId, map.getId(), dropPos.x, dropPos.y);
         respond(ex, 200, String.format(
