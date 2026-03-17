@@ -10,6 +10,7 @@ import net.server.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import server.ItemInformationProvider;
+import server.TimerManager;
 import server.maps.MapleMap;
 
 import java.awt.Point;
@@ -208,9 +209,8 @@ public class AdminAPI {
         final Character dropTarget = target;
         final MapleMap dropMap = map;
         final Point finalDropPos = dropPos;
-        dropMap.broadcastMessage(null); // no-op to ensure map is active
         // Use TimerManager to run on game thread
-        server.TimerManager.getInstance().schedule(() -> {
+        TimerManager.getInstance().schedule(() -> {
             dropMap.spawnItemDrop(dropTarget, dropTarget, toDrop, finalDropPos, true, true);
         }, 0);
 
