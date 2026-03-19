@@ -13,11 +13,17 @@ import server.ItemInformationProvider;
 import server.TimerManager;
 import server.maps.MapleMap;
 
+import tools.DatabaseConnection;
+
 import java.awt.Point;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
 /**
  * Lightweight HTTP API for the dashboard to control the game server.
@@ -37,6 +43,7 @@ public class AdminAPI {
             server.setExecutor(null);
             server.start();
             log.info("Admin API started on port {}", PORT);
+            loadRatesFromDb();
         } catch (IOException e) {
             log.error("Failed to start Admin API", e);
         }
@@ -95,6 +102,7 @@ public class AdminAPI {
         }
 
         log.info("Admin API: Rates updated — {}", changes.toString().trim());
+        saveRatesToDb(world);
         respond(ex, 200, String.format(
             "{\"success\":true,\"exp_rate\":%d,\"meso_rate\":%d,\"drop_rate\":%d,\"boss_drop_rate\":%d}",
             world.getExpRate(), world.getMesoRate(), world.getDropRate(), world.getBossDropRate()
@@ -219,6 +227,57 @@ public class AdminAPI {
             "{\"success\":true,\"itemId\":%d,\"quantity\":%d,\"mapId\":%d,\"x\":%d,\"y\":%d}",
             itemId, quantity, map.getId(), dropPos.x, dropPos.y
         ));
+    }
+
+    private void loadRatesFromDb() {
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement("SELECT config_key, config_value FROM server_config WHERE config_key IN ('exp_rate','meso_rate','drop_rate','boss_drop_rate')");
+             ResultSet rs = ps.executeQuery()) {
+            World world = Server.getInstance().getWorld(0);
+            if (world == null) return;
+            boolean any = false;
+            while (rs.next()) {
+                String key = rs.getString("config_key");
+                try {
+                    int val = Integer.parseInt(rs.getString("config_value"));
+                    switch (key) {
+                        case "exp_rate" -> world.setExpRate(val);
+                        case "meso_rate" -> world.setMesoRate(val);
+                        case "drop_rate" -> world.setDropRate(val);
+                        case "boss_drop_rate" -> world.setBossDropRate(val);
+                    }
+                    any = true;
+                } catch (NumberFormatException ignored) {}
+            }
+            if (any) {
+                log.info("Admin API: Loaded rates from DB — exp={} meso={} drop={} boss_drop={}",
+                    world.getExpRate(), world.getMesoRate(), world.getDropRate(), world.getBossDropRate());
+            }
+        } catch (SQLException e) {
+            log.warn("Admin API: Could not load rates from DB (table may not exist yet)", e);
+        }
+    }
+
+    private void saveRatesToDb(World world) {
+        String upsert = "INSERT INTO server_config (config_key, config_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)";
+        try (Connection con = DatabaseConnection.getConnection()) {
+            try (PreparedStatement ps = con.prepareStatement(upsert)) {
+                String[][] pairs = {
+                    {"exp_rate", String.valueOf(world.getExpRate())},
+                    {"meso_rate", String.valueOf(world.getMesoRate())},
+                    {"drop_rate", String.valueOf(world.getDropRate())},
+                    {"boss_drop_rate", String.valueOf(world.getBossDropRate())}
+                };
+                for (String[] pair : pairs) {
+                    ps.setString(1, pair[0]);
+                    ps.setString(2, pair[1]);
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+        } catch (SQLException e) {
+            log.warn("Admin API: Could not save rates to DB", e);
+        }
     }
 
     private static String extractString(String json, String key) {

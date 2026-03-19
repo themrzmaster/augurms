@@ -17,8 +17,14 @@ export async function POST(request: NextRequest) {
     // 1. Add mob spawns to the map via plife table
     if (Array.isArray(mobs) && mobs.length > 0 && mapId) {
       for (const mob of mobs) {
-        const { id, count = 1, x = 0, y = 0, mobtime = 0 } = mob;
-        for (let i = 0; i < Math.min(count, 20); i++) {
+        // Accept common AI field name variations
+        const id = mob.id ?? mob.mobId ?? mob.lifeId;
+        const count = Math.min(mob.count ?? 1, 20);
+        const x = mob.x ?? 0;
+        const y = mob.y ?? 0;
+        const mobtime = mob.mobtime ?? mob.respawnTime ?? mob.respawn ?? 0;
+        if (!id) continue;
+        for (let i = 0; i < count; i++) {
           await execute(
             `INSERT INTO plife (world, map, life, type, cy, f, fh, rx0, rx1, x, y, mobtime)
              VALUES (?, ?, ?, 'm', ?, 0, 0, ?, ?, ?, ?, ?)`,
@@ -29,30 +35,34 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 2. Add bonus drops to specific mobs
+    // 2. Add bonus drops (mob-specific or global)
     if (Array.isArray(bonusDrops) && bonusDrops.length > 0) {
       for (const drop of bonusDrops) {
-        const { mobId, itemId, chance = 100000, minQuantity = 1, maxQuantity = 1 } = drop;
-        if (mobId && itemId) {
+        // Accept common AI field name variations
+        const mobId = drop.mobId ?? drop.dropperId;
+        const itemId = drop.itemId ?? drop.itemid ?? drop.item_id;
+        // Normalize chance: if < 1 treat as fraction (0.3 = 30%), convert to out-of-1M
+        let chance = drop.chance ?? 100000;
+        if (chance > 0 && chance < 1) chance = Math.round(chance * 1000000);
+        const minQty = drop.minQuantity ?? drop.minimum_quantity ?? drop.min ?? 1;
+        const maxQty = drop.maxQuantity ?? drop.maximum_quantity ?? drop.max ?? 1;
+        if (!itemId) continue;
+
+        if (mobId) {
+          // Mob-specific drop
           await execute(
             "INSERT INTO drop_data (dropperid, itemid, minimum_quantity, maximum_quantity, questid, chance) VALUES (?, ?, ?, ?, 0, ?)",
-            [mobId, itemId, minQuantity, maxQuantity, chance]
+            [mobId, itemId, minQty, maxQty, chance]
           );
           actions.push(`Added drop: item ${itemId} from mob ${mobId} at ${chance}/1M chance`);
+        } else {
+          // Global drop (all mobs)
+          await execute(
+            "INSERT INTO drop_data_global (continent, itemid, minimum_quantity, maximum_quantity, questid, chance, comments) VALUES (-1, ?, ?, ?, 0, ?, ?)",
+            [itemId, minQty, maxQty, chance, `Event: ${name}`]
+          );
+          actions.push(`Added global drop: item ${itemId} at ${chance}/1M chance`);
         }
-      }
-    }
-
-    // 3. Add global bonus drops (drops from ALL mobs)
-    if (Array.isArray(bonusDrops)) {
-      const globalDrops = bonusDrops.filter(d => !d.mobId && d.itemId);
-      for (const drop of globalDrops) {
-        const { itemId, chance = 50000, minQuantity = 1, maxQuantity = 1 } = drop;
-        await execute(
-          "INSERT INTO drop_data_global (continent, itemid, minimum_quantity, maximum_quantity, questid, chance, comments) VALUES (-1, ?, ?, ?, 0, ?, ?)",
-          [itemId, minQuantity, maxQuantity, chance, `Event: ${name}`]
-        );
-        actions.push(`Added global drop: item ${itemId} at ${chance}/1M chance`);
       }
     }
 

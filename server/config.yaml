@@ -1,7 +1,7 @@
 worlds:
   - flag: 0
-    server_message: "[Cosmic Spring Bloom] Strange mushrooms have bloomed across the land! Hunt them down for rare drops - Elixirs, Power Elixirs, and STR Scrolls! Event active at Snail Hunting Ground II and Henesys Hunting Ground II!"
-    event_message: "[Cosmic Spring Bloom] Strange mushrooms have bloomed across the land! Hunt them down for rare drops - Elixirs, Power Elixirs, and STR Scrolls! Event active at Snail Hunting Ground II and Henesys Hunting Ground II!"
+    server_message: Welcome to AugurMS! A classic MapleStory v83 experience guided by AI.
+    event_message: Welcome to AugurMS!
     why_am_i_recommended: Welcome to Scania!
     channels: 3
     exp_rate: 1

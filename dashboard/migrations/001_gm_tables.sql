@@ -79,6 +79,17 @@ CREATE TABLE IF NOT EXISTS gm_schedule (
 INSERT IGNORE INTO gm_schedule (id, enabled, interval_hours, prompt)
 VALUES (1, 0, 6, 'Review server health and make adjustments as needed.');
 
+-- Server config (rates etc.) — persisted so game server survives restarts
+CREATE TABLE IF NOT EXISTS server_config (
+  config_key VARCHAR(64) PRIMARY KEY,
+  config_value VARCHAR(255),
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Seed default 10x rates
+INSERT IGNORE INTO server_config (config_key, config_value) VALUES
+  ('exp_rate', '10'), ('meso_rate', '10'), ('drop_rate', '10'), ('boss_drop_rate', '10');
+
 -- Persistent reactor spawns (loaded by game server on map init, like plife for mobs/NPCs)
 CREATE TABLE IF NOT EXISTS preactor (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
