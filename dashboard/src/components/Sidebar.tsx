@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: "/config", label: "Config", icon: "⚙️" },
   { href: "/scripts", label: "Scripts", icon: "📜" },
   { href: "/drops", label: "Drops", icon: "💎" },
+  { href: "/events", label: "Events", icon: "🎉" },
   { href: "/gamemaster", label: "Game Master", icon: "🧠" },
 ];
 
