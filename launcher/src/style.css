@@ -380,7 +380,7 @@ body {
 .update-status.up-to-date { border-color: rgba(66, 211, 146, 0.2); }
 .update-status.up-to-date .update-icon::after { content: ""; }
 .update-status.needs-update { border-color: rgba(251, 146, 60, 0.3); background: rgba(251, 146, 60, 0.05); }
-.update-status.error { border-color: rgba(245, 101, 101, 0.2); }
+.update-status.error { border-color: rgba(245, 101, 101, 0.2); white-space: pre-wrap; align-items: flex-start; }
 
 .progress-bar-container {
   margin-top: 10px;

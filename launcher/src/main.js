@@ -220,7 +220,14 @@ ipcMain.handle("launcher:downloadUpdates", async (_, updates) => {
         break;
       } catch (err) {
         if (attempt === MAX_RETRIES) {
-          return { success: false, error: `Failed to download ${file.name}: ${err.message}` };
+          let hint = "";
+          const msg = err.message || "";
+          if (msg.includes("EPROTO") || msg.includes("WRONG_VERSION_NUMBER") || msg.includes("SSL")) {
+            hint = "\n\nThis looks like a network/SSL issue. A firewall, proxy, or antivirus may be blocking the download. Try:\n• Disable VPN or proxy\n• Temporarily disable antivirus\n• Download files manually from: https://github.com/themrzmaster/augurms/releases/tag/client-v1.0.1";
+          } else if (msg.includes("timeout") || msg.includes("ETIMEDOUT") || msg.includes("ECONNRESET")) {
+            hint = "\n\nConnection issue. Check your internet and try again. You can also download files manually from: https://github.com/themrzmaster/augurms/releases/tag/client-v1.0.1";
+          }
+          return { success: false, error: `Failed to download ${file.name}: ${msg}${hint}` };
         }
         // Only delete partial file for non-resumable errors
         // Resume-capable: keep the partial file so next attempt uses Range header
