@@ -54,20 +54,31 @@ export async function POST() {
       "SELECT COUNT(*) as count FROM accounts WHERE createdat > DATE_SUB(NOW(), INTERVAL 7 DAY)"
     ).catch(() => [{ count: 0 }]);
 
-    const bossKillsDaily = await query<{ bosstype: string; kills: number }>(
-      "SELECT bosstype, COUNT(*) as kills FROM bosslog_daily WHERE DATE(attempttime) = CURDATE() GROUP BY bosstype"
-    ).catch(() => []);
+    const bossKillsDaily = await query<{ kills: number }>(
+      "SELECT COUNT(*) as kills FROM bosslog_daily WHERE DATE(attempttime) = CURDATE()"
+    ).catch(() => [{ kills: 0 }]);
 
-    // Read rates from config
+    // Read rates from live game server (falls back to config.yaml)
     let expRate = 1, mesoRate = 1, dropRate = 1;
     try {
-      const configContent = readFileSync(PATHS.config, "utf-8");
-      const config = parseYaml(configContent);
-      const world0 = config.worlds?.[0] || {};
-      expRate = world0.exp_rate || 1;
-      mesoRate = world0.meso_rate || 1;
-      dropRate = world0.drop_rate || 1;
-    } catch { /* ignore */ }
+      const GAME_API = process.env.GAME_API_URL || "http://augur-ms-game.internal:8585";
+      const ratesRes = await fetch(`${GAME_API}/rates`, { signal: AbortSignal.timeout(3000) });
+      if (ratesRes.ok) {
+        const rates = await ratesRes.json();
+        expRate = rates.exp_rate || 1;
+        mesoRate = rates.meso_rate || 1;
+        dropRate = rates.drop_rate || 1;
+      }
+    } catch {
+      try {
+        const configContent = readFileSync(PATHS.config, "utf-8");
+        const config = parseYaml(configContent);
+        const world0 = config.worlds?.[0] || {};
+        expRate = world0.exp_rate || 1;
+        mesoRate = world0.meso_rate || 1;
+        dropRate = world0.drop_rate || 1;
+      } catch { /* ignore */ }
+    }
 
     const snapshot: GMSnapshot = {
       totalMeso: mesoStats.totalMeso,
@@ -81,7 +92,7 @@ export async function POST() {
       jobDistribution: Object.fromEntries(jobDist.map(r => [String(r.job), r.count])),
       totalAccounts: accountCount.cnt,
       newAccounts7d: newAccounts[0]?.count || 0,
-      bossKillsToday: Object.fromEntries(bossKillsDaily.map(r => [r.bosstype, r.kills])),
+      bossKillsToday: bossKillsDaily[0]?.kills || 0,
       expRate,
       mesoRate,
       dropRate,
@@ -100,7 +111,7 @@ export async function POST() {
         snapshot.totalItems, snapshot.totalCharacters, snapshot.avgLevel,
         snapshot.maxLevel, JSON.stringify(snapshot.levelDistribution),
         JSON.stringify(snapshot.jobDistribution), snapshot.totalAccounts,
-        snapshot.newAccounts7d, JSON.stringify(snapshot.bossKillsToday),
+        snapshot.newAccounts7d, snapshot.bossKillsToday,
         snapshot.expRate, snapshot.mesoRate, snapshot.dropRate,
       ]
     );
@@ -133,7 +144,7 @@ export async function GET() {
         jobDistribution: typeof s.job_distribution === "string" ? JSON.parse(s.job_distribution) : s.job_distribution,
         totalAccounts: s.total_accounts,
         newAccounts7d: s.new_accounts_7d,
-        bossKillsToday: typeof s.boss_kills_today === "string" ? JSON.parse(s.boss_kills_today) : s.boss_kills_today,
+        bossKillsToday: s.boss_kills_today || 0,
         expRate: s.exp_rate,
         mesoRate: s.meso_rate,
         dropRate: s.drop_rate,
