@@ -1069,15 +1069,40 @@ async function buildHistoricalContext(): Promise<string> {
 
   try {
     const actions = await dbQuery(
-      "SELECT a.tool_name, a.reasoning, a.category, a.executed_at, s.prompt FROM gm_actions a LEFT JOIN gm_sessions s ON a.session_id = s.id ORDER BY a.executed_at DESC LIMIT 10"
+      "SELECT a.tool_name, a.tool_input, a.reasoning, a.category, a.executed_at, s.prompt FROM gm_actions a LEFT JOIN gm_sessions s ON a.session_id = s.id ORDER BY a.executed_at DESC LIMIT 10"
     );
     if (actions.length > 0) {
       context += "\n\n## Your Recent Actions\n";
       for (const a of actions as any[]) {
-        context += `- [${a.executed_at}] **${a.tool_name}** (${a.category}): ${a.reasoning || "no reasoning recorded"}\n`;
+        context += `- [${a.executed_at}] **${a.tool_name}** (${a.category}): ${a.reasoning || "no reasoning recorded"}`;
+        if (a.tool_input) context += ` | Input: ${String(a.tool_input).substring(0, 300)}`;
+        context += `\n`;
       }
     }
   } catch { /* no actions yet */ }
+
+  // Past event items that players may still hold — enables continuity (trade-ins, follow-up quests)
+  try {
+    const pastEventDrops = await dbQuery(
+      "SELECT DISTINCT a.tool_input FROM gm_actions a WHERE a.tool_name IN ('create_event', 'batch_update_drops') AND a.tool_result LIKE '%success%' ORDER BY a.executed_at DESC LIMIT 20"
+    );
+    if (pastEventDrops.length > 0) {
+      const itemIds = new Set<string>();
+      for (const row of pastEventDrops as any[]) {
+        const input = String(row.tool_input);
+        // Extract itemId values from JSON inputs
+        const matches = input.matchAll(/"itemId"\s*:\s*(\d+)/gi);
+        for (const m of matches) itemIds.add(m[1]);
+        const matches2 = input.matchAll(/"itemid"\s*:\s*(\d+)/gi);
+        for (const m of matches2) itemIds.add(m[1]);
+      }
+      if (itemIds.size > 0) {
+        context += `\n\n## Past Event Item IDs (players may still hold these)\n`;
+        context += `Item IDs from your past events: ${[...itemIds].join(", ")}\n`;
+        context += `Consider reusing these for trade-ins, exchanges, or follow-up events to reward loyal players who kept them.\n`;
+      }
+    }
+  } catch { /* ignore */ }
 
   try {
     const goals = await dbQuery("SELECT * FROM gm_goals WHERE status = 'active' ORDER BY created_at DESC");
@@ -1188,6 +1213,13 @@ You have persistent memory via snapshots, action logs, and goals.
 - Use \`get_my_history\` to recall previous sessions
 - Use goals to maintain persistent objectives
 - It's perfectly fine to observe and do nothing if the game is healthy
+
+## Event Continuity — Reuse Past Items
+Your historical context includes item IDs from past events. Players may still have these items in their inventory. This is an opportunity:
+- Create **trade-in NPCs or follow-up events** that give value to items from past events
+- Example: "Bring 50 Spirit Jewels to the NPC for a special scroll" or "Spirit Jewels now power a new reactor"
+- This rewards loyal players who held onto event items and creates a sense of a living, connected world
+- Check \`get_my_history\` for details on what items you distributed and in what quantities
 
 ## Balance Targets (soft guidelines)
 - Average time to level 30: ~2 hours
