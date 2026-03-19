@@ -58,7 +58,7 @@ export interface GMSnapshot {
   jobDistribution: Record<string, number>;
   totalAccounts: number;
   newAccounts7d: number;
-  bossKillsToday: Record<string, number>;
+  bossKillsToday: number;
   expRate: number;
   mesoRate: number;
   dropRate: number;
