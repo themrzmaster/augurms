@@ -1267,9 +1267,53 @@ async function persistSessionEnd(session: GMSession): Promise<void> {
       "UPDATE gm_sessions SET completed_at = NOW(), summary = ?, status = ?, changes_made = ?, full_log = ? WHERE id = ?",
       [session.summary || null, session.status, changesMade, JSON.stringify(session.log), session.id]
     );
+    if (session.status === "complete" && changesMade > 0 && session.trigger === "scheduled") {
+      await postDiscordUpdate(session).catch((err) =>
+        console.error("Failed to post Discord update:", err)
+      );
+    }
   } catch (err) {
     console.error("Failed to persist session end:", err);
   }
+}
+
+const CATEGORY_EMOJI: Record<string, string> = {
+  rates: "\u2728", mobs: "\uD83D\uDC7E", drops: "\uD83C\uDF81", spawns: "\uD83D\uDDFA\uFE0F",
+  shops: "\uD83D\uDED2", events: "\uD83C\uDF89", config: "\u2699\uFE0F", reactors: "\uD83D\uDCA5", other: "\uD83D\uDD27",
+};
+
+async function postDiscordUpdate(session: GMSession): Promise<void> {
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  if (!webhookUrl) return;
+
+  const actions = session.log.filter(
+    (e): e is Extract<GMLogEntry, { type: "tool_call" }> =>
+      e.type === "tool_call" && WRITE_TOOLS.has(e.tool.name)
+  );
+
+  const actionLines = actions.slice(0, 10).map((a) => {
+    const cat = inferCategory(a.tool.name);
+    const emoji = CATEGORY_EMOJI[cat] || "\uD83D\uDD27";
+    const label = a.tool.name.replace(/_/g, " ");
+    return `${emoji} **${label}**`;
+  });
+
+  const embed = {
+    title: "\u2728 The Augur has spoken",
+    description: session.summary || "The Game Master made changes to the world.",
+    color: 0xf5c542,
+    fields: actionLines.length > 0
+      ? [{ name: `Changes (${actions.length})`, value: actionLines.join("\n") }]
+      : [],
+    timestamp: session.completedAt || new Date().toISOString(),
+    footer: { text: "AugurMS Game Master" },
+  };
+
+  await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ embeds: [embed] }),
+  });
 }
 
 async function persistAction(

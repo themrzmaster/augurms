@@ -152,11 +152,11 @@ export default function RegisterPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="6-30 characters"
+              placeholder="6-12 characters"
               className="w-full rounded-lg border border-border bg-bg-card px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted outline-none transition focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/30"
               required
               minLength={6}
-              maxLength={30}
+              maxLength={12}
             />
           </div>
 
@@ -172,7 +172,7 @@ export default function RegisterPage() {
               className="w-full rounded-lg border border-border bg-bg-card px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted outline-none transition focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/30"
               required
               minLength={6}
-              maxLength={30}
+              maxLength={12}
             />
           </div>
 

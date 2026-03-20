@@ -51,10 +51,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Validate password: 6-30 chars
-  if (!password || password.length < 6 || password.length > 30) {
+  // Validate password: 6-12 chars (game client caps at 12)
+  if (!password || password.length < 6 || password.length > 12) {
     return NextResponse.json(
-      { error: "Password must be 6-30 characters" },
+      { error: "Password must be 6-12 characters" },
       { status: 400 }
     );
   }
