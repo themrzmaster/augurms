@@ -49,12 +49,12 @@ import client.command.commands.gm0.StatStrCommand;
 import client.command.commands.gm0.TimeCommand;
 import client.command.commands.gm0.ToggleExpCommand;
 import client.command.commands.gm0.UptimeCommand;
+import client.command.commands.gm0.WhatDropsFromCommand;
+import client.command.commands.gm0.WhoDropsCommand;
 import client.command.commands.gm1.BossHpCommand;
 import client.command.commands.gm1.BuffMeCommand;
 import client.command.commands.gm1.GotoCommand;
 import client.command.commands.gm1.MobHpCommand;
-import client.command.commands.gm1.WhatDropsFromCommand;
-import client.command.commands.gm1.WhoDropsCommand;
 import client.command.commands.gm2.ApCommand;
 import client.command.commands.gm2.BombCommand;
 import client.command.commands.gm2.BuffCommand;
@@ -367,6 +367,8 @@ public class CommandsExecutor {
         addCommand("mylawn", MapOwnerClaimCommand.class);
         addCommand("bosshp", BossHpCommand.class);
         addCommand("mobhp", MobHpCommand.class);
+        addCommand("whatdropsfrom", WhatDropsFromCommand.class);
+        addCommand("whodrops", WhoDropsCommand.class);
 
         commandsNameDesc.add(levelCommandsCursor);
     }
@@ -375,8 +377,6 @@ public class CommandsExecutor {
     private void registerLv1Commands() {
         levelCommandsCursor = new Pair<>(new ArrayList<String>(), new ArrayList<String>());
 
-        addCommand("whatdropsfrom", 1, WhatDropsFromCommand.class);
-        addCommand("whodrops", 1, WhoDropsCommand.class);
         addCommand("buffme", 1, BuffMeCommand.class);
         addCommand("goto", 1, GotoCommand.class);
 
