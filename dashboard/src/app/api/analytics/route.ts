@@ -131,7 +131,28 @@ export async function GET(request: NextRequest) {
         "SELECT COUNT(*) as count FROM accounts WHERE createdat > DATE_SUB(NOW(), INTERVAL 7 DAY)"
       ).catch(() => [{ count: 0 }]);
 
+      // Online and active player counts
+      const [onlinePlayers] = await query<{ cnt: number }>(
+        "SELECT COUNT(*) as cnt FROM accounts WHERE loggedin > 0"
+      ).catch(() => [{ cnt: 0 }]);
+
+      const [activeChars24h] = await query<{ cnt: number }>(
+        "SELECT COUNT(*) as cnt FROM characters WHERE lastExpGainTime > DATE_SUB(NOW(), INTERVAL 24 HOUR) OR lastLogoutTime > DATE_SUB(NOW(), INTERVAL 24 HOUR)"
+      ).catch(() => [{ cnt: 0 }]);
+
+      const [activeAccounts7d] = await query<{ cnt: number }>(
+        "SELECT COUNT(*) as cnt FROM accounts WHERE lastlogin > DATE_SUB(NOW(), INTERVAL 7 DAY)"
+      ).catch(() => [{ cnt: 0 }]);
+
+      const [totalChars] = await query<{ cnt: number }>(
+        "SELECT COUNT(*) as cnt FROM characters"
+      );
+
       result.activity = {
+        onlinePlayers: onlinePlayers.cnt,
+        activeCharacters24h: activeChars24h.cnt,
+        activeAccounts7d: activeAccounts7d.cnt,
+        totalCharactersAllTime: totalChars.cnt,
         mapPopularity: mapPop.map(r => ({ mapId: r.map, playerCount: r.count })),
         bossKillsToday: bossKillsDaily,
         bossKillsThisWeek: bossKillsWeekly,

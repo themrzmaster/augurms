@@ -205,6 +205,11 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
         totalMeso: s.total_meso, avgMesoPerPlayer: s.avg_meso_per_player, storageMeso: s.storage_meso,
         totalItems: s.total_items, totalCharacters: s.total_characters,
         avgLevel: s.avg_level, maxLevel: s.max_level,
+        onlineNow: s.total_online || 0,
+        activeCharacters24h: s.active_characters_24h || 0,
+        activeCharacters7d: s.active_characters_7d || 0,
+        activeAccounts24h: s.active_accounts_24h || 0,
+        activeAccounts7d: s.active_accounts_7d || 0,
         expRate: s.exp_rate, mesoRate: s.meso_rate, dropRate: s.drop_rate,
       };
       if (prev) {
@@ -214,6 +219,8 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
           avgLevelChange: Math.round((s.avg_level - prev.avg_level) * 10) / 10,
           itemChange: s.total_items - prev.total_items,
           characterChange: s.total_characters - prev.total_characters,
+          activeChars24hChange: (s.active_characters_24h || 0) - (prev.active_characters_24h || 0),
+          activeAccounts7dChange: (s.active_accounts_7d || 0) - (prev.active_accounts_7d || 0),
         };
       }
       return snap;
@@ -235,6 +242,61 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
 
   take_snapshot: async () =>
     JSON.stringify(await api("/api/gm/snapshot", { method: "POST" })),
+
+  get_player_feedback: async ({ rating, unread_only, days, limit }) => {
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (rating && rating !== "all") {
+      conditions.push("rating = ?");
+      params.push(rating);
+    }
+    if (unread_only) {
+      conditions.push("read_by_gm = 0");
+    }
+    if (days) {
+      conditions.push("created_at > DATE_SUB(NOW(), INTERVAL ? DAY)");
+      params.push(days);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const lim = Math.min(limit || 20, 50);
+
+    // Get summary counts
+    const counts = await dbQuery(
+      `SELECT rating, COUNT(*) as cnt FROM player_feedback ${where} GROUP BY rating`,
+      params
+    );
+
+    // Get individual entries
+    const entries = await dbQuery(
+      `SELECT * FROM player_feedback ${where} ORDER BY created_at DESC LIMIT ${lim}`,
+      params
+    );
+
+    // Mark retrieved entries as read
+    if (entries.length > 0) {
+      const ids = (entries as any[]).map((e: any) => e.id);
+      await execute(
+        `UPDATE player_feedback SET read_by_gm = 1 WHERE id IN (${ids.map(() => "?").join(",")})`,
+        ids
+      ).catch(() => {});
+    }
+
+    return JSON.stringify({
+      summary: Object.fromEntries((counts as any[]).map((c: any) => [c.rating, c.cnt])),
+      totalEntries: (counts as any[]).reduce((sum: number, c: any) => sum + c.cnt, 0),
+      entries: (entries as any[]).map((e: any) => ({
+        id: e.id,
+        characterName: e.character_name,
+        characterLevel: e.character_level,
+        rating: e.rating,
+        message: e.message,
+        createdAt: e.created_at,
+        wasUnread: e.read_by_gm === 0,
+      })),
+    });
+  },
 
   publish_client_update: async ({ version, message, files }) => {
     // Read current manifest, bump version, optionally update file entries
@@ -288,7 +350,7 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "get_snapshots",
-      description: "Get recent game state snapshots with computed deltas between consecutive snapshots. Each snapshot includes: totalMeso, avgMesoPerPlayer, storageMeso, totalItems, totalCharacters, avgLevel, maxLevel, expRate, mesoRate, dropRate. Deltas show: mesoChange (absolute + %), avgLevelChange, itemChange, characterChange.",
+      description: "Get recent game state snapshots with computed deltas between consecutive snapshots. Each snapshot includes: totalMeso, avgMesoPerPlayer, storageMeso, totalItems, totalCharacters (all-time cumulative), onlineNow, activeCharacters24h, activeCharacters7d, activeAccounts24h, activeAccounts7d, avgLevel, maxLevel, expRate, mesoRate, dropRate. Deltas show: mesoChange (absolute + %), avgLevelChange, itemChange, characterChange, activeChars24hChange, activeAccounts7dChange.",
       parameters: { type: "object", properties: { limit: { type: "number", description: "Number of snapshots to return (default 10, newest first)" } } },
     },
   },
@@ -304,8 +366,24 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "take_snapshot",
-      description: "Capture a point-in-time snapshot of the game state and save it to the database. Captures: total meso (characters + storage), item count, character count, avg/max level, level/job distributions, account stats, boss kills today, current rates. Use at the start of each session to establish a baseline.",
+      description: "Capture a point-in-time snapshot of the game state and save it to the database. Captures: total meso (characters + storage), item count, character count (all-time), active player counts (online now, active characters 24h/7d, active accounts 24h/7d), avg/max level, level/job distributions, account stats, boss kills today, current rates. Use at the start of each session to establish a baseline.",
       parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_player_feedback",
+      description: "Read player feedback submitted via the in-game @feedback command. Players rate their experience as positive, negative, or suggestion with a message. Returns summary counts + individual entries. Retrieved feedback is marked as read. Use this to understand player sentiment about your changes.",
+      parameters: {
+        type: "object",
+        properties: {
+          rating: { type: "string", enum: ["all", "positive", "negative", "suggestion"], description: "Filter by rating type (default: all)" },
+          unread_only: { type: "boolean", description: "Only return feedback not yet read by GM (default: false)" },
+          days: { type: "number", description: "Only return feedback from the last N days" },
+          limit: { type: "number", description: "Max entries to return (default 20, max 50)" },
+        },
+      },
     },
   },
   {
@@ -1050,7 +1128,14 @@ async function buildHistoricalContext(): Promise<string> {
         const s = snapshots[i] as any;
         const prev = snapshots[i + 1] as any;
         context += `\n### Snapshot ${i + 1} — ${s.taken_at}\n`;
-        context += `- Meso: ${Number(s.total_meso).toLocaleString()}`;
+        context += `- **Online Now: ${s.total_online || 0}** | Active Chars 24h: ${s.active_characters_24h || 0} | Active Chars 7d: ${s.active_characters_7d || 0}`;
+        if (prev) {
+          const acctDelta = (s.active_accounts_7d || 0) - (prev.active_accounts_7d || 0);
+          context += ` | Active Accounts 7d: ${s.active_accounts_7d || 0} (${acctDelta >= 0 ? "+" : ""}${acctDelta})`;
+        } else {
+          context += ` | Active Accounts 7d: ${s.active_accounts_7d || 0}`;
+        }
+        context += `\n- Meso: ${Number(s.total_meso).toLocaleString()}`;
         if (prev) {
           const delta = Number(s.total_meso) - Number(prev.total_meso);
           const pct = prev.total_meso ? Math.round((delta / Number(prev.total_meso)) * 1000) / 10 : 0;
@@ -1061,7 +1146,7 @@ async function buildHistoricalContext(): Promise<string> {
           const lvlDelta = Math.round((s.avg_level - prev.avg_level) * 10) / 10;
           context += ` (${lvlDelta >= 0 ? "+" : ""}${lvlDelta})`;
         }
-        context += `\n- Characters: ${s.total_characters} | Items: ${s.total_items}`;
+        context += `\n- Total Characters (all-time): ${s.total_characters} | Items: ${s.total_items}`;
         context += `\n- Rates: EXP ${s.exp_rate}x | Meso ${s.meso_rate}x | Drop ${s.drop_rate}x`;
       }
     }
@@ -1123,6 +1208,30 @@ async function buildHistoricalContext(): Promise<string> {
     }
   } catch { /* no goals yet */ }
 
+  // Player feedback summary
+  try {
+    const feedbackCounts = await dbQuery(
+      "SELECT rating, COUNT(*) as cnt FROM player_feedback WHERE created_at > DATE_SUB(NOW(), INTERVAL 7 DAY) GROUP BY rating"
+    );
+    const unreadFeedback = await dbQuery(
+      "SELECT character_name, character_level, rating, message, created_at FROM player_feedback WHERE read_by_gm = 0 ORDER BY created_at DESC LIMIT 5"
+    );
+    if ((feedbackCounts as any[]).length > 0 || (unreadFeedback as any[]).length > 0) {
+      context += "\n\n## Player Feedback (last 7 days)\n";
+      if ((feedbackCounts as any[]).length > 0) {
+        const counts: Record<string, number> = {};
+        for (const row of feedbackCounts as any[]) counts[row.rating] = row.cnt;
+        context += `- Positive: ${counts.positive || 0} | Negative: ${counts.negative || 0} | Suggestions: ${counts.suggestion || 0}\n`;
+      }
+      if ((unreadFeedback as any[]).length > 0) {
+        context += `\n### Unread Feedback\n`;
+        for (const f of unreadFeedback as any[]) {
+          context += `- [${f.rating}] **${f.character_name}** (Lv${f.character_level}): "${f.message}" — ${f.created_at}\n`;
+        }
+      }
+    }
+  } catch { /* no feedback table yet */ }
+
   try {
     const sessions = await dbQuery(
       "SELECT id, started_at, trigger_type, summary, status, changes_made FROM gm_sessions ORDER BY started_at DESC LIMIT 5"
@@ -1153,6 +1262,13 @@ Your #1 goal is to **increase the number of active players** and **maximize enga
 
 You are a game director who creates moments players remember and talk about.
 
+## Key Metrics — Understand What the Numbers Mean
+- **Online Now** = players currently connected to the server (from accounts.loggedin)
+- **Active Characters (24h/7d)** = characters that gained EXP or logged out within that window — this is REAL recent activity
+- **Active Accounts (24h/7d)** = accounts that logged in within that window
+- **Total Characters** = CUMULATIVE count of all characters ever created. This number only goes up. It is NOT a player count. Never celebrate total characters as growth.
+- **Primary health metric = Active Accounts (7d)** — this is the closest thing to "how many real players do we have"
+
 ## Your Role — Experience Architect
 Think of yourself as a game director who:
 
@@ -1162,6 +1278,7 @@ Think of yourself as a game director who:
 4. **Curates the world** — Place content where players are (and where you want them to go). Make exploration rewarding. Populate dead maps with reasons to visit.
 
 ## What You Should Do Often
+- Read player feedback at the start of each session (use get_player_feedback) — players tell you what they like and dislike
 - Create events (holiday events, boss rush, treasure hunts, invasion events, scavenger hunts)
 - Place breakable reactors (eggs, boxes, chests) on maps with surprise loot — players LOVE breaking things for random rewards
 - Use \`spawn_drop\` to surprise online players with items appearing at their feet — use sparingly for maximum impact (e.g. reward a player who just hit a milestone, or surprise someone who's been grinding for hours)
@@ -1200,11 +1317,12 @@ You can drop items directly in front of online players using \`spawn_drop\`. Thi
 - **Don't fix what isn't broken.** If the economy is roughly stable, leave the rates alone.
 
 ## Decision Framework
-1. OBSERVE: Read analytics and trends — how many players, what are they doing, where are they?
-2. COMPARE: Check against previous sessions — are players growing, declining, or stagnant?
-3. ENGAGE FIRST: Can you create an event, place reactors, or surprise players instead of changing numbers?
-4. INTERVENE ONLY IF NEEDED: Only touch rates/stats if there's a clear, sustained problem
-5. RECORD: Update goals to track player growth and retention metrics
+1. OBSERVE: Check active player counts (Active Accounts 7d, online now) — NOT total characters
+2. COMPARE: Check against previous sessions — are active players growing, declining, or stagnant?
+3. LISTEN: Read player feedback — what are players saying about recent changes?
+4. ENGAGE FIRST: Can you create an event, place reactors, or surprise players instead of changing numbers?
+5. INTERVENE ONLY IF NEEDED: Only touch rates/stats if there's a clear, sustained problem
+6. RECORD: Update goals to track player growth and retention metrics
 
 ## Memory & Continuity
 You have persistent memory via snapshots, action logs, and goals.
@@ -1227,13 +1345,15 @@ Your historical context includes item IDs from past events. Players may still ha
 - Meso inflation rate: <5% per day
 - No item should have >80% saturation
 - Boss content accessible to 50%+ of eligible players
-- Target: growing active player count week over week
+- Target: growing Active Accounts (7d) week over week
 
 ## Guardrails
 - Never set rates below 1x or above 50x
 - Never delete a player's items or reduce their level without being asked
 - Never change more than 1 major lever per session
 - Always explain your reasoning before making changes
+- Never celebrate total characters rising as "player growth" — it's cumulative and only goes up
+- Use Active Accounts (7d) as your primary player count metric
 - Rate changes should be rare — at most once per week
 - Prefer creating events and content over adjusting numbers
 - \`spawn_drop\` is for special moments, not routine — max a few per session

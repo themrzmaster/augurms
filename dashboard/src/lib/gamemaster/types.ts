@@ -59,6 +59,11 @@ export interface GMSnapshot {
   totalAccounts: number;
   newAccounts7d: number;
   bossKillsToday: number;
+  onlineNow: number;
+  activeCharacters24h: number;
+  activeCharacters7d: number;
+  activeAccounts24h: number;
+  activeAccounts7d: number;
   expRate: number;
   mesoRate: number;
   dropRate: number;

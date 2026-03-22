@@ -15,6 +15,11 @@ interface Snapshot {
   max_level: number;
   total_accounts: number;
   new_accounts_7d: number;
+  total_online: number;
+  active_characters_24h: number;
+  active_characters_7d: number;
+  active_accounts_24h: number;
+  active_accounts_7d: number;
   exp_rate: number;
   meso_rate: number;
   drop_rate: number;
@@ -60,6 +65,12 @@ export async function GET(request: NextRequest) {
     const characterChange = newest.total_characters - oldest.total_characters;
     const accountChange = newest.total_accounts - oldest.total_accounts;
 
+    // Active player trends
+    const activeChars24hChange = (newest.active_characters_24h || 0) - (oldest.active_characters_24h || 0);
+    const activeChars7dChange = (newest.active_characters_7d || 0) - (oldest.active_characters_7d || 0);
+    const activeAccounts24hChange = (newest.active_accounts_24h || 0) - (oldest.active_accounts_24h || 0);
+    const activeAccounts7dChange = (newest.active_accounts_7d || 0) - (oldest.active_accounts_7d || 0);
+
     // Per-interval breakdown (for sparkline data)
     const intervals = snapshots.map((s, i) => {
       const prev = snapshots[i - 1];
@@ -93,7 +104,8 @@ export async function GET(request: NextRequest) {
     if (Math.abs(mesoPerDay) > 10) alerts.push(`Meso ${mesoPerDay > 0 ? "inflation" : "deflation"} at ${Math.abs(Math.round(mesoPerDay))}%/day`);
     if (levelVelocityPerDay > 5) alerts.push(`Rapid leveling: +${levelVelocityPerDay.toFixed(1)} avg levels/day`);
     if (Math.abs(itemChangePct) > 20) alerts.push(`Item count ${itemChangePct > 0 ? "surge" : "drop"}: ${Math.round(itemChangePct)}% over period`);
-    if (characterChange < 0) alerts.push(`Player count declining: ${characterChange} characters lost`);
+    if (activeAccounts7dChange < 0) alerts.push(`Active players declining: ${activeAccounts7dChange} active accounts (7d) lost`);
+    if ((newest.total_online || 0) === 0) alerts.push("No players currently online");
 
     return NextResponse.json({
       period: { hours: hoursElapsed, snapshots: snapshots.length, from: oldest.taken_at, to: newest.taken_at },
@@ -121,6 +133,15 @@ export async function GET(request: NextRequest) {
         accountChange,
         currentCharacters: newest.total_characters,
         currentAccounts: newest.total_accounts,
+        onlineNow: newest.total_online || 0,
+        activeCharacters24h: newest.active_characters_24h || 0,
+        activeCharacters7d: newest.active_characters_7d || 0,
+        activeAccounts24h: newest.active_accounts_24h || 0,
+        activeAccounts7d: newest.active_accounts_7d || 0,
+        activeChars24hChange,
+        activeChars7dChange,
+        activeAccounts24hChange,
+        activeAccounts7dChange,
       },
       rates: {
         current: { exp: newest.exp_rate, meso: newest.meso_rate, drop: newest.drop_rate },

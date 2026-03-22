@@ -51,6 +51,7 @@ import client.command.commands.gm0.ToggleExpCommand;
 import client.command.commands.gm0.UptimeCommand;
 import client.command.commands.gm0.WhatDropsFromCommand;
 import client.command.commands.gm0.WhoDropsCommand;
+import client.command.commands.gm0.FeedbackCommand;
 import client.command.commands.gm1.BossHpCommand;
 import client.command.commands.gm1.BuffMeCommand;
 import client.command.commands.gm1.GotoCommand;
@@ -369,6 +370,7 @@ public class CommandsExecutor {
         addCommand("mobhp", MobHpCommand.class);
         addCommand("whatdropsfrom", WhatDropsFromCommand.class);
         addCommand("whodrops", WhoDropsCommand.class);
+        addCommand("feedback", FeedbackCommand.class);
 
         commandsNameDesc.add(levelCommandsCursor);
     }

@@ -58,6 +58,27 @@ export async function POST() {
       "SELECT COUNT(*) as kills FROM bosslog_daily WHERE DATE(attempttime) = CURDATE()"
     ).catch(() => [{ kills: 0 }]);
 
+    // Active player metrics
+    const [onlineNow] = await query<{ cnt: number }>(
+      "SELECT COUNT(*) as cnt FROM accounts WHERE loggedin > 0"
+    ).catch(() => [{ cnt: 0 }]);
+
+    const [activeChars24h] = await query<{ cnt: number }>(
+      "SELECT COUNT(*) as cnt FROM characters WHERE lastExpGainTime > DATE_SUB(NOW(), INTERVAL 24 HOUR) OR lastLogoutTime > DATE_SUB(NOW(), INTERVAL 24 HOUR)"
+    ).catch(() => [{ cnt: 0 }]);
+
+    const [activeChars7d] = await query<{ cnt: number }>(
+      "SELECT COUNT(*) as cnt FROM characters WHERE lastExpGainTime > DATE_SUB(NOW(), INTERVAL 7 DAY) OR lastLogoutTime > DATE_SUB(NOW(), INTERVAL 7 DAY)"
+    ).catch(() => [{ cnt: 0 }]);
+
+    const [activeAccounts24h] = await query<{ cnt: number }>(
+      "SELECT COUNT(*) as cnt FROM accounts WHERE lastlogin > DATE_SUB(NOW(), INTERVAL 24 HOUR)"
+    ).catch(() => [{ cnt: 0 }]);
+
+    const [activeAccounts7d] = await query<{ cnt: number }>(
+      "SELECT COUNT(*) as cnt FROM accounts WHERE lastlogin > DATE_SUB(NOW(), INTERVAL 7 DAY)"
+    ).catch(() => [{ cnt: 0 }]);
+
     // Read rates from live game server (falls back to config.yaml)
     let expRate = 1, mesoRate = 1, dropRate = 1;
     try {
@@ -93,6 +114,11 @@ export async function POST() {
       totalAccounts: accountCount.cnt,
       newAccounts7d: newAccounts[0]?.count || 0,
       bossKillsToday: bossKillsDaily[0]?.kills || 0,
+      onlineNow: onlineNow.cnt,
+      activeCharacters24h: activeChars24h.cnt,
+      activeCharacters7d: activeChars7d.cnt,
+      activeAccounts24h: activeAccounts24h.cnt,
+      activeAccounts7d: activeAccounts7d.cnt,
       expRate,
       mesoRate,
       dropRate,
@@ -104,14 +130,18 @@ export async function POST() {
         (total_meso, avg_meso_per_player, storage_meso, total_items,
          total_characters, avg_level, max_level, level_distribution,
          job_distribution, total_accounts, new_accounts_7d, boss_kills_today,
+         total_online, active_characters_24h, active_characters_7d,
+         active_accounts_24h, active_accounts_7d,
          exp_rate, meso_rate, drop_rate)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         snapshot.totalMeso, snapshot.avgMesoPerPlayer, snapshot.storageMeso,
         snapshot.totalItems, snapshot.totalCharacters, snapshot.avgLevel,
         snapshot.maxLevel, JSON.stringify(snapshot.levelDistribution),
         JSON.stringify(snapshot.jobDistribution), snapshot.totalAccounts,
         snapshot.newAccounts7d, snapshot.bossKillsToday,
+        snapshot.onlineNow, snapshot.activeCharacters24h, snapshot.activeCharacters7d,
+        snapshot.activeAccounts24h, snapshot.activeAccounts7d,
         snapshot.expRate, snapshot.mesoRate, snapshot.dropRate,
       ]
     );
@@ -145,6 +175,11 @@ export async function GET() {
         totalAccounts: s.total_accounts,
         newAccounts7d: s.new_accounts_7d,
         bossKillsToday: s.boss_kills_today || 0,
+        onlineNow: s.total_online || 0,
+        activeCharacters24h: s.active_characters_24h || 0,
+        activeCharacters7d: s.active_characters_7d || 0,
+        activeAccounts24h: s.active_accounts_24h || 0,
+        activeAccounts7d: s.active_accounts_7d || 0,
         expRate: s.exp_rate,
         mesoRate: s.meso_rate,
         dropRate: s.drop_rate,
