@@ -78,6 +78,12 @@ export default function LandingPage() {
             GitHub
           </a>
           <Link
+            href="/vote"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:text-text-primary"
+          >
+            Vote
+          </Link>
+          <Link
             href="/login"
             className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:text-text-primary"
           >
