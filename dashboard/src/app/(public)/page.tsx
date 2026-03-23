@@ -270,6 +270,42 @@ export default function LandingPage() {
           </div>
         )}
 
+        {/* Community Features */}
+        <div className="mt-20 w-full max-w-4xl">
+          <h2 className="mb-2 text-center text-2xl font-bold">Your Voice Matters</h2>
+          <p className="mb-8 text-center text-sm text-text-secondary">
+            AugurMS is shaped by its players. Talk to the AI, vote for the server, and earn rewards.
+          </p>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+            <div className="rounded-xl border border-border bg-bg-card/50 p-6 backdrop-blur-sm transition hover:border-border-light">
+              <div className="mb-3 text-2xl">{"\uD83D\uDCAC"}</div>
+              <h3 className="mb-2 font-semibold text-text-primary">Player Feedback</h3>
+              <p className="text-sm leading-relaxed text-text-secondary">
+                Use <span className="rounded bg-bg-primary/80 px-1.5 py-0.5 font-mono text-xs">@feedback</span> in-game to tell the AI Game Master what you think. Rate changes as positive, negative, or suggest new ideas. The Augur reads every message.
+              </p>
+              <div className="mt-3 space-y-1 rounded-lg bg-bg-primary/50 px-3 py-2 font-mono text-xs text-text-muted">
+                <div><span className="text-accent-green">@feedback + Great event!</span></div>
+                <div><span className="text-accent-red">@feedback - Drop rates too low</span></div>
+                <div><span className="text-accent-blue">@feedback s Add more quests</span></div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-bg-card/50 p-6 backdrop-blur-sm transition hover:border-border-light">
+              <div className="mb-3 text-2xl">{"\uD83D\uDDF3\uFE0F"}</div>
+              <h3 className="mb-2 font-semibold text-text-primary">Vote &amp; Earn</h3>
+              <p className="text-sm leading-relaxed text-text-secondary">
+                <Link href="/vote" className="font-medium text-accent-gold underline underline-offset-2">Vote daily</Link> on GTop100 to help AugurMS grow. Each vote earns <strong className="text-accent-gold">1 Vote Point</strong> you can spend in-game. Check your balance with <span className="rounded bg-bg-primary/80 px-1.5 py-0.5 font-mono text-xs">@points</span>.
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-bg-card/50 p-6 backdrop-blur-sm transition hover:border-border-light">
+              <div className="mb-3 text-2xl">{"\uD83D\uDC41\uFE0F"}</div>
+              <h3 className="mb-2 font-semibold text-text-primary">Full Transparency</h3>
+              <p className="text-sm leading-relaxed text-text-secondary">
+                Every change the AI makes is logged and visible. See what rates were adjusted, what events were created, and why. The Augur&apos;s Log above shows its latest actions in real time.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Download section */}
         <div id="download" className="mt-20 w-full max-w-3xl scroll-mt-20">
           <h2 className="mb-2 text-2xl font-bold">Download &amp; Play</h2>
