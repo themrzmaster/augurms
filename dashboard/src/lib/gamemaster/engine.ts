@@ -1402,6 +1402,55 @@ const CATEGORY_EMOJI: Record<string, string> = {
   shops: "\uD83D\uDED2", events: "\uD83C\uDF89", config: "\u2699\uFE0F", reactors: "\uD83D\uDCA5", other: "\uD83D\uDD27",
 };
 
+function summarizeToolCall(name: string, input: Record<string, any>): string {
+  try {
+    switch (name) {
+      case "create_event":
+        return `"${input.name || "unnamed"}"${input.mapId ? ` on map ${input.mapId}` : ""}${input.mobs?.length ? `, ${input.mobs.length} mob spawns` : ""}${input.bonusDrops?.length ? `, ${input.bonusDrops.length} bonus drops` : ""}`;
+      case "update_rates":
+        return Object.entries(input.rates || {}).map(([k, v]) => `${k}: ${v}x`).join(", ");
+      case "add_mob_drop":
+        return `item ${input.itemId} to mob ${input.mobId} (${((input.chance || 0) / 10000).toFixed(1)}%)`;
+      case "remove_mob_drop":
+        return `item ${input.itemId} from mob ${input.mobId}`;
+      case "batch_update_drops":
+        return `${input.changes?.length || 0} mob drop table changes`;
+      case "batch_update_mobs":
+        return `${input.mobs?.length || 0} mobs updated`;
+      case "update_mob":
+        return `mob ${input.mobId}: ${Object.keys(input.changes || {}).join(", ")}`;
+      case "add_map_spawn":
+        return `${input.type === "m" ? "mob" : "NPC"} ${input.lifeId} on map ${input.mapId}`;
+      case "remove_map_spawn":
+        return `${input.type === "m" ? "mob" : "NPC"} ${input.lifeId} from map ${input.mapId}`;
+      case "add_map_reactor":
+        return `reactor ${input.reactorId} on map ${input.mapId}`;
+      case "add_reactor_drop":
+        return `item ${input.itemId} to reactor ${input.reactorId}`;
+      case "add_shop_item":
+        return `item ${input.itemId} to shop ${input.shopId} for ${input.price?.toLocaleString()} meso`;
+      case "update_shop_price":
+        return `item ${input.itemId} in shop ${input.shopId} to ${input.price?.toLocaleString()} meso`;
+      case "set_server_message":
+        return `"${(input.message || "").slice(0, 60)}"`;
+      case "cleanup_event":
+        return `${input.mapId ? `map ${input.mapId}` : ""}${input.clearGlobalDrops ? " + global drops" : ""}`;
+      case "create_goal":
+        return `"${(input.goal || "").slice(0, 60)}"`;
+      case "update_goal":
+        return `goal #${input.id}${input.status ? ` → ${input.status}` : ""}`;
+      case "spawn_drop":
+        return `item ${input.itemId}${input.characterName ? ` to ${input.characterName}` : ""}`;
+      case "give_item_to_character":
+        return `item ${input.itemId} x${input.quantity || 1} to char ${input.characterId}`;
+      case "update_character":
+        return `char ${input.characterId}: ${Object.keys(input.changes || {}).join(", ")}`;
+      default:
+        return "";
+    }
+  } catch { return ""; }
+}
+
 async function postDiscordUpdate(session: GMSession): Promise<void> {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
@@ -1415,7 +1464,8 @@ async function postDiscordUpdate(session: GMSession): Promise<void> {
     const cat = inferCategory(a.tool.name);
     const emoji = CATEGORY_EMOJI[cat] || "\uD83D\uDD27";
     const label = a.tool.name.replace(/_/g, " ");
-    return `${emoji} **${label}**`;
+    const detail = summarizeToolCall(a.tool.name, a.tool.input);
+    return detail ? `${emoji} **${label}** — ${detail}` : `${emoji} **${label}**`;
   });
 
   const embed = {
@@ -1423,7 +1473,7 @@ async function postDiscordUpdate(session: GMSession): Promise<void> {
     description: session.summary || "The Game Master made changes to the world.",
     color: 0xf5c542,
     fields: actionLines.length > 0
-      ? [{ name: `Changes (${actions.length})`, value: actionLines.join("\n") }]
+      ? [{ name: `Changes (${actions.length})`, value: actionLines.join("\n").slice(0, 1024) }]
       : [],
     timestamp: session.completedAt || new Date().toISOString(),
     footer: { text: "AugurMS Game Master" },

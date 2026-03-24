@@ -379,11 +379,28 @@ function GoalsPanel() {
 // ---- Past Session as compact card ----
 function PastSessionCard({ session, isScheduled }: { session: PastSession; isScheduled: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  const [actions, setActions] = useState<any[] | null>(null);
+
+  const handleExpand = async () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && actions === null) {
+      try {
+        const res = await fetch(`/api/gm/history?type=actions&limit=50`);
+        const data = await res.json();
+        const sessionActions = (data.actions || []).filter((a: any) => a.sessionId === session.id);
+        setActions(sessionActions);
+      } catch {
+        setActions([]);
+      }
+    }
+  };
+
   return (
     <div className={`rounded-xl border overflow-hidden ${
       isScheduled ? "border-accent-purple/20 bg-accent-purple/[0.03]" : "border-border bg-bg-card"
     }`}>
-      <button onClick={() => setExpanded(!expanded)}
+      <button onClick={handleExpand}
         className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-bg-card-hover/50 transition-colors">
         <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
           session.status === "complete" ? "bg-accent-green" : session.status === "error" ? "bg-accent-red" : "bg-accent-blue"
@@ -400,11 +417,40 @@ function PastSessionCard({ session, isScheduled }: { session: PastSession; isSch
         <span className="text-[10px] text-text-muted shrink-0">{timeAgo(session.startedAt)}</span>
         <span className={`text-[10px] text-text-muted transition-transform ${expanded ? "rotate-180" : ""}`}>&#9660;</span>
       </button>
-      {expanded && session.summary && (
-        <div className="border-t border-border/40 px-4 py-3">
-          <div className="text-[12px] text-text-secondary whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
-            {session.summary}
-          </div>
+      {expanded && (
+        <div className="border-t border-border/40 px-4 py-3 space-y-2">
+          {session.summary && (
+            <div className="text-[12px] text-text-secondary whitespace-pre-wrap leading-relaxed">
+              {session.summary}
+            </div>
+          )}
+          {session.prompt && (
+            <div className="text-[11px] text-text-muted"><span className="font-semibold text-text-secondary">Prompt:</span> {session.prompt}</div>
+          )}
+          {actions && actions.length > 0 && (
+            <div className="space-y-1.5 mt-2">
+              <div className="text-[11px] font-semibold text-text-secondary">Actions ({actions.length})</div>
+              {actions.map((a: any, i: number) => (
+                <div key={i} className="rounded-lg bg-bg-primary/50 px-3 py-2 text-[11px]">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-semibold text-accent-gold">{a.toolName.replace(/_/g, " ")}</span>
+                    <span className="text-text-muted">({a.category})</span>
+                  </div>
+                  {a.toolInput && (
+                    <div className="mt-1 text-text-muted font-mono text-[10px] max-h-20 overflow-y-auto">
+                      {JSON.stringify(a.toolInput, null, 1).slice(0, 300)}
+                    </div>
+                  )}
+                  {a.reasoning && (
+                    <div className="mt-1 text-text-secondary italic text-[10px]">{a.reasoning.slice(0, 200)}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {actions !== null && actions.length === 0 && !session.summary && (
+            <div className="text-[11px] text-text-muted">No details available for this session.</div>
+          )}
         </div>
       )}
     </div>
