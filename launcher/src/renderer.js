@@ -25,11 +25,34 @@ function setupControls() {
 
   // HD Mode toggle
   const hdCheckbox = $("hd-checkbox");
-  window.augur.getHD().then((enabled) => { hdCheckbox.checked = enabled; });
+  const hdOptions = $("hd-options");
+  const hdResolution = $("hd-resolution");
+  const hdFullscreen = $("hd-fullscreen");
+
+  window.augur.getHD().then((enabled) => {
+    hdCheckbox.checked = enabled;
+    hdOptions.style.display = enabled ? "flex" : "none";
+  });
+  window.augur.getHDOptions().then((opts) => {
+    hdResolution.value = opts.resolution;
+    hdFullscreen.checked = opts.fullscreen;
+  });
+
   hdCheckbox.onchange = async () => {
-    await window.augur.setHD(hdCheckbox.checked);
+    const enabled = hdCheckbox.checked;
+    hdOptions.style.display = enabled ? "flex" : "none";
+    await window.augur.setHD(enabled);
     await checkForUpdates();
   };
+
+  const saveHDOptions = async () => {
+    await window.augur.setHDOptions({
+      resolution: hdResolution.value,
+      fullscreen: hdFullscreen.checked,
+    });
+  };
+  hdResolution.onchange = saveHDOptions;
+  hdFullscreen.onchange = saveHDOptions;
 
   // Listen for download progress
   window.augur.onDownloadProgress((data) => {

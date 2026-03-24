@@ -66,12 +66,30 @@
 
       <!-- HD Mode toggle -->
       <div class="hd-section">
-        <label class="hd-toggle" title="HD Mode uses Ezorsia v2 for 1280x720 widescreen (beta)">
+        <label class="hd-toggle" title="HD Mode uses Ezorsia v2 for widescreen (beta)">
           <input type="checkbox" id="hd-checkbox" />
           <span class="hd-slider"></span>
           <span class="hd-label">HD Mode <span class="hd-beta">BETA</span></span>
-          <span class="hd-desc">1280×720 widescreen</span>
         </label>
+        <div class="hd-options" id="hd-options" style="display:none">
+          <div class="hd-option-row">
+            <span class="hd-option-label">Resolution</span>
+            <select id="hd-resolution" class="hd-select">
+              <option value="1024x768">1024×768</option>
+              <option value="1280x720" selected>1280×720</option>
+              <option value="1366x768">1366×768</option>
+              <option value="1600x900">1600×900</option>
+              <option value="1920x1080">1920×1080</option>
+            </select>
+          </div>
+          <div class="hd-option-row">
+            <span class="hd-option-label">Fullscreen</span>
+            <label class="hd-mini-toggle">
+              <input type="checkbox" id="hd-fullscreen" />
+              <span class="hd-slider"></span>
+            </label>
+          </div>
+        </div>
       </div>
 
       <!-- Update status -->

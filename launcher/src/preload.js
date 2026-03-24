@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld("augur", {
   // Settings
   getHD: () => ipcRenderer.invoke("settings:getHD"),
   setHD: (enabled) => ipcRenderer.invoke("settings:setHD", enabled),
+  getHDOptions: () => ipcRenderer.invoke("settings:getHDOptions"),
+  setHDOptions: (opts) => ipcRenderer.invoke("settings:setHDOptions", opts),
 
   // Updates
   checkUpdates: () => ipcRenderer.invoke("launcher:checkUpdates"),

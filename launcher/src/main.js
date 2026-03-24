@@ -156,6 +156,42 @@ ipcMain.handle("settings:setHD", (_, enabled) => {
   return { success: true };
 });
 
+ipcMain.handle("settings:getHDOptions", () => {
+  const configPath = path.join(app.getPath("userData"), "config.json");
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    return {
+      resolution: config.hdResolution || "1280x720",
+      fullscreen: config.hdFullscreen || false,
+    };
+  } catch {
+    return { resolution: "1280x720", fullscreen: false };
+  }
+});
+
+ipcMain.handle("settings:setHDOptions", (_, { resolution, fullscreen }) => {
+  saveConfig({ hdResolution: resolution, hdFullscreen: fullscreen });
+
+  // Write config.ini in game directory if it exists
+  if (gamePath) {
+    const iniPath = path.join(gamePath, "config.ini");
+    if (fs.existsSync(iniPath)) {
+      try {
+        let ini = fs.readFileSync(iniPath, "utf-8");
+        const [w, h] = resolution.split("x");
+        ini = ini.replace(/^width=.*/m, `width=${w}`);
+        ini = ini.replace(/^height=.*/m, `height=${h}`);
+        ini = ini.replace(/^WindowedMode=.*/m, `WindowedMode=${fullscreen ? "false" : "true"}`);
+        fs.writeFileSync(iniPath, ini);
+      } catch (err) {
+        console.error("Failed to update config.ini:", err);
+      }
+    }
+  }
+
+  return { success: true };
+});
+
 ipcMain.handle("launcher:checkUpdates", async () => {
   if (!gamePath) return { status: "no_path" };
 
