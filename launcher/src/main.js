@@ -104,6 +104,44 @@ ipcMain.handle("game:launch", () => {
   if (!fs.existsSync(exePath))
     return { success: false, error: "AugurMS.exe not found" };
 
+  // Safety check: remove Ezorsia dinput8.dll if HD mode is off
+  // Windows auto-loads any dinput8.dll in the exe directory, causing crashes
+  let hdMode = false;
+  try {
+    const config = JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "config.json"), "utf-8"));
+    hdMode = config.hdMode || false;
+  } catch {}
+
+  if (!hdMode) {
+    const staleFiles = [];
+    for (const name of HD_FILES) {
+      const filePath = path.join(gamePath, name);
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); }
+        catch { staleFiles.push(name); }
+      }
+    }
+    if (staleFiles.includes("dinput8.dll")) {
+      return {
+        success: false,
+        error: "Cannot remove dinput8.dll from game folder (file may be locked). Close any running AugurMS processes and try again, or manually delete it from: " + gamePath,
+      };
+    }
+  } else {
+    // HD mode on: ensure sleepTime >= 30 in config.ini for Win11 compatibility
+    const iniPath = path.join(gamePath, "config.ini");
+    try {
+      if (fs.existsSync(iniPath)) {
+        let ini = fs.readFileSync(iniPath, "utf-8");
+        const match = ini.match(/^sleepTime=(\d+)/m);
+        if (match && parseInt(match[1]) < 30) {
+          ini = ini.replace(/^sleepTime=\d+/m, "sleepTime=30");
+          fs.writeFileSync(iniPath, ini);
+        }
+      }
+    } catch {}
+  }
+
   const { execFile } = require("child_process");
   execFile(exePath, { cwd: gamePath }, (err) => {
     if (err) console.error("Launch error:", err);
@@ -148,9 +186,20 @@ ipcMain.handle("settings:setHD", (_, enabled) => {
 
   // If disabling HD, remove HD files from game directory
   if (!enabled && gamePath) {
+    const failed = [];
     for (const name of HD_FILES) {
       const filePath = path.join(gamePath, name);
-      try { fs.unlinkSync(filePath); } catch {}
+      try {
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      } catch {
+        failed.push(name);
+      }
+    }
+    if (failed.length > 0) {
+      return {
+        success: true,
+        warning: `Could not remove: ${failed.join(", ")}. Close AugurMS and try toggling HD off again, or manually delete from game folder.`,
+      };
     }
   }
 

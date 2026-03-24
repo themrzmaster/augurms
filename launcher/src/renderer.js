@@ -41,7 +41,11 @@ function setupControls() {
   hdCheckbox.onchange = async () => {
     const enabled = hdCheckbox.checked;
     hdOptions.style.display = enabled ? "flex" : "none";
-    await window.augur.setHD(enabled);
+    const result = await window.augur.setHD(enabled);
+    if (result.warning) {
+      $("update-text").textContent = result.warning;
+      $("update-status").className = "update-status error";
+    }
     await checkForUpdates();
   };
 
