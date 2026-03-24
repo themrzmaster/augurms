@@ -80,6 +80,28 @@
       "size": 28315281,
       "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/UI.wz"
     }
+    ,
+    {
+      "name": "dinput8.dll",
+      "hash": "1c0835181b529cfd7cea720688b294e6ae0cce83d72ebacbda003aeb7262a61a",
+      "size": 2840064,
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/dinput8.dll",
+      "hd": true
+    },
+    {
+      "name": "config.ini",
+      "hash": "85166ba1eec0fedfa8931ff72d6ab37924214886b779bcb5f57bbc998bae8143",
+      "size": 948,
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/ezorsia-config.ini",
+      "hd": true
+    },
+    {
+      "name": "EzorsiaV2_UI.wz",
+      "hash": "0fbbed3d8fdd326297d3f5055da801705e5f8169b3e757ce4489958eb8eb020c",
+      "size": 1370002,
+      "url": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/EzorsiaV2_UI.wz",
+      "hd": true
+    }
   ],
   "downloadBase": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/"
 }

@@ -131,8 +131,40 @@ ipcMain.handle("launcher:news", async () => {
   }
 });
 
+// HD files that get removed when HD mode is disabled
+const HD_FILES = ["dinput8.dll", "config.ini", "EzorsiaV2_UI.wz"];
+
+ipcMain.handle("settings:getHD", () => {
+  const configPath = path.join(app.getPath("userData"), "config.json");
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    return config.hdMode || false;
+  } catch { return false; }
+});
+
+ipcMain.handle("settings:setHD", (_, enabled) => {
+  saveConfig({ hdMode: enabled });
+
+  // If disabling HD, remove HD files from game directory
+  if (!enabled && gamePath) {
+    for (const name of HD_FILES) {
+      const filePath = path.join(gamePath, name);
+      try { fs.unlinkSync(filePath); } catch {}
+    }
+  }
+
+  return { success: true };
+});
+
 ipcMain.handle("launcher:checkUpdates", async () => {
   if (!gamePath) return { status: "no_path" };
+
+  // Read HD mode setting
+  let hdMode = false;
+  try {
+    const config = JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "config.json"), "utf-8"));
+    hdMode = config.hdMode || false;
+  } catch {}
 
   try {
     const manifest = await fetchJSON(MANIFEST_URL);
@@ -140,11 +172,17 @@ ipcMain.handle("launcher:checkUpdates", async () => {
 
     const updates = [];
     for (const file of manifest.files) {
+      // Skip HD files if HD mode is off
+      if (file.hd && !hdMode) continue;
+
       const localPath = path.join(gamePath, file.name);
       if (!fs.existsSync(localPath)) {
         updates.push({ ...file, reason: "missing" });
         continue;
       }
+
+      // Skip hash check for config.ini if it exists (user may have customized it)
+      if (file.name === "config.ini" && file.hd) continue;
 
       // Check file size first (fast)
       const stats = fs.statSync(localPath);

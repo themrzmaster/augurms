@@ -16,6 +16,10 @@ contextBridge.exposeInMainWorld("augur", {
   getStatus: () => ipcRenderer.invoke("server:status"),
   getNews: () => ipcRenderer.invoke("launcher:news"),
 
+  // Settings
+  getHD: () => ipcRenderer.invoke("settings:getHD"),
+  setHD: (enabled) => ipcRenderer.invoke("settings:setHD", enabled),
+
   // Updates
   checkUpdates: () => ipcRenderer.invoke("launcher:checkUpdates"),
   downloadUpdates: (updates) => ipcRenderer.invoke("launcher:downloadUpdates", updates),

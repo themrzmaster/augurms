@@ -23,6 +23,14 @@ function setupControls() {
   $("link-website").onclick = () => window.augur.openExternal("https://augurms.com");
   $("link-discord").onclick = () => window.augur.openExternal("https://discord.gg/aEE3zpFY");
 
+  // HD Mode toggle
+  const hdCheckbox = $("hd-checkbox");
+  window.augur.getHD().then((enabled) => { hdCheckbox.checked = enabled; });
+  hdCheckbox.onchange = async () => {
+    await window.augur.setHD(hdCheckbox.checked);
+    await checkForUpdates();
+  };
+
   // Listen for download progress
   window.augur.onDownloadProgress((data) => {
     const overall = ((data.index + data.percent / 100) / data.total) * 100;
