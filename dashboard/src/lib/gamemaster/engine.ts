@@ -1123,7 +1123,15 @@ async function buildHistoricalContext(): Promise<string> {
   try {
     const snapshots = await dbQuery("SELECT * FROM gm_snapshots ORDER BY taken_at DESC LIMIT 5");
     if (snapshots.length > 0) {
-      context += "\n\n## Recent Snapshots (newest first)\n";
+      const latest = snapshots[0] as any;
+      context += "\n\n## Current State at a Glance\n";
+      context += `- **Rates**: EXP ${latest.exp_rate}x | Meso ${latest.meso_rate}x | Drop ${latest.drop_rate}x\n`;
+      context += `- **Players**: ${latest.total_online || 0} online now | ${latest.active_characters_24h || 0} active chars (24h) | ${latest.active_accounts_7d || 0} active accounts (7d)\n`;
+      context += `- **Economy**: ${Number(latest.total_meso).toLocaleString()} total meso | Avg ${Number(latest.avg_meso_per_player).toLocaleString()} per player\n`;
+      context += `- **Progression**: Avg level ${latest.avg_level} | Max level ${latest.max_level}\n`;
+      context += `- *(Latest snapshot: ${latest.taken_at})*\n`;
+
+      context += "\n## Recent Snapshots (newest first)\n";
       for (let i = 0; i < snapshots.length; i++) {
         const s = snapshots[i] as any;
         const prev = snapshots[i + 1] as any;
@@ -1152,6 +1160,99 @@ async function buildHistoricalContext(): Promise<string> {
     }
   } catch { /* no snapshots yet */ }
 
+  // Active events — what's currently running in the game
+  try {
+    const customSpawns = await dbQuery(
+      "SELECT map, life, type, COUNT(*) as cnt FROM plife GROUP BY map, life, type ORDER BY map"
+    );
+    const globalDrops = await dbQuery(
+      "SELECT itemid, chance, minimum_quantity, maximum_quantity, comments FROM drop_data_global"
+    );
+    const customReactors = await dbQuery(
+      "SELECT map, rid, name, reactor_time FROM preactor ORDER BY map"
+    ).catch(() => []);
+
+    const hasSpawns = (customSpawns as any[]).length > 0;
+    const hasDrops = (globalDrops as any[]).length > 0;
+    const hasReactors = (customReactors as any[]).length > 0;
+
+    if (hasSpawns || hasDrops || hasReactors) {
+      // Collect all map IDs for name resolution
+      const allMapIds = new Set<number>();
+      if (hasSpawns) for (const s of customSpawns as any[]) allMapIds.add(Number(s.map));
+      if (hasReactors) for (const r of customReactors as any[]) allMapIds.add(Number(r.map));
+
+      const mapNames: Record<number, string> = {};
+      try {
+        const results = await Promise.allSettled(
+          [...allMapIds].slice(0, 10).map(async (id) => {
+            const data = await api(`/api/maps/${id}`);
+            return { id, name: data?.name || `Map ${id}` };
+          })
+        );
+        for (const r of results) {
+          if (r.status === "fulfilled") mapNames[r.value.id] = r.value.name;
+        }
+      } catch {}
+
+      context += "\n\n## Currently Active Events\n";
+      context += "These are LIVE right now. Clean up anything that has run its course.\n";
+
+      if (hasSpawns) {
+        context += "\n### Custom Spawns\n";
+        const spawnsByMap: Record<number, any[]> = {};
+        for (const s of customSpawns as any[]) {
+          if (!spawnsByMap[s.map]) spawnsByMap[s.map] = [];
+          spawnsByMap[s.map].push(s);
+        }
+        for (const [mapId, spawns] of Object.entries(spawnsByMap)) {
+          const mapName = mapNames[Number(mapId)] || `Map ${mapId}`;
+          const list = spawns.map((s: any) => `${s.type === "m" ? "mob" : "NPC"} ${s.life} (x${s.cnt})`).join(", ");
+          context += `- **${mapName}** (${mapId}): ${list}\n`;
+        }
+      }
+
+      if (hasReactors) {
+        context += "\n### Custom Reactors\n";
+        const reactorsByMap: Record<number, any[]> = {};
+        for (const r of customReactors as any[]) {
+          if (!reactorsByMap[r.map]) reactorsByMap[r.map] = [];
+          reactorsByMap[r.map].push(r);
+        }
+        for (const [mapId, reactors] of Object.entries(reactorsByMap)) {
+          const mapName = mapNames[Number(mapId)] || `Map ${mapId}`;
+          const list = reactors.map((r: any) => `reactor ${r.rid}${r.name ? ` "${r.name}"` : ""}`).join(", ");
+          context += `- **${mapName}** (${mapId}): ${list}\n`;
+        }
+      }
+
+      if (hasDrops) {
+        const uniqueItemIds = [...new Set((globalDrops as any[]).map((d: any) => Number(d.itemid)))];
+        const dropItemNames: Record<number, string> = {};
+        try {
+          const results = await Promise.allSettled(
+            uniqueItemIds.slice(0, 15).map(async (id) => {
+              const data = await api(`/api/items/${id}`);
+              return { id, name: data?.name || null };
+            })
+          );
+          for (const r of results) {
+            if (r.status === "fulfilled" && r.value.name) dropItemNames[r.value.id] = r.value.name;
+          }
+        } catch {}
+
+        context += "\n### Global Drops (all mobs drop these)\n";
+        for (const d of globalDrops as any[]) {
+          const name = dropItemNames[d.itemid] || `Item ${d.itemid}`;
+          const pct = (d.chance / 10000).toFixed(1);
+          context += `- ${name} (${d.itemid}) at ${pct}% chance${d.comments ? ` [${d.comments}]` : ""}\n`;
+        }
+      }
+
+      context += "\nIf any of these are from past events that should have ended, clean them up with cleanup_event.\n";
+    }
+  } catch { /* no active events */ }
+
   try {
     const actions = await dbQuery(
       "SELECT a.tool_name, a.tool_input, a.reasoning, a.category, a.executed_at, s.prompt FROM gm_actions a LEFT JOIN gm_sessions s ON a.session_id = s.id ORDER BY a.executed_at DESC LIMIT 10"
@@ -1166,25 +1267,40 @@ async function buildHistoricalContext(): Promise<string> {
     }
   } catch { /* no actions yet */ }
 
-  // Past event items that players may still hold — enables continuity (trade-ins, follow-up quests)
+  // Past event items that players may still hold — enables continuity
   try {
     const pastEventDrops = await dbQuery(
-      "SELECT DISTINCT a.tool_input FROM gm_actions a WHERE a.tool_name IN ('create_event', 'batch_update_drops') AND a.tool_result LIKE '%success%' ORDER BY a.executed_at DESC LIMIT 20"
+      "SELECT DISTINCT a.tool_input FROM gm_actions a WHERE a.tool_name IN ('create_event', 'batch_update_drops', 'add_mob_drop', 'add_reactor_drop') AND a.tool_result LIKE '%success%' ORDER BY a.executed_at DESC LIMIT 20"
     );
     if (pastEventDrops.length > 0) {
       const itemIds = new Set<string>();
       for (const row of pastEventDrops as any[]) {
         const input = String(row.tool_input);
-        // Extract itemId values from JSON inputs
-        const matches = input.matchAll(/"itemId"\s*:\s*(\d+)/gi);
-        for (const m of matches) itemIds.add(m[1]);
-        const matches2 = input.matchAll(/"itemid"\s*:\s*(\d+)/gi);
-        for (const m of matches2) itemIds.add(m[1]);
+        for (const m of input.matchAll(/"itemId"\s*:\s*(\d+)/gi)) itemIds.add(m[1]);
+        for (const m of input.matchAll(/"itemid"\s*:\s*(\d+)/gi)) itemIds.add(m[1]);
       }
       if (itemIds.size > 0) {
-        context += `\n\n## Past Event Item IDs (players may still hold these)\n`;
-        context += `Item IDs from your past events: ${[...itemIds].join(", ")}\n`;
-        context += `Consider reusing these for trade-ins, exchanges, or follow-up events to reward loyal players who kept them.\n`;
+        // Resolve item names
+        const pastItemNames: Record<string, string> = {};
+        try {
+          const results = await Promise.allSettled(
+            [...itemIds].slice(0, 15).map(async (id) => {
+              const data = await api(`/api/items/${id}`);
+              return { id, name: data?.name || null };
+            })
+          );
+          for (const r of results) {
+            if (r.status === "fulfilled" && r.value.name) pastItemNames[r.value.id] = r.value.name;
+          }
+        } catch {}
+
+        context += `\n\n## Past Event Items (players may still hold these)\n`;
+        const itemList = [...itemIds].map(id => {
+          const name = pastItemNames[id];
+          return name ? `${name} (${id})` : `Item ${id}`;
+        }).join(", ");
+        context += `Items from your past events: ${itemList}\n`;
+        context += `Consider reusing these for trade-ins, exchanges, or follow-up events.\n`;
       }
     }
   } catch { /* ignore */ }
@@ -1192,11 +1308,57 @@ async function buildHistoricalContext(): Promise<string> {
   try {
     const goals = await dbQuery("SELECT * FROM gm_goals WHERE status = 'active' ORDER BY created_at DESC");
     if (goals.length > 0) {
+      // Auto-compute current values from latest snapshot
+      const [latestSnap] = await dbQuery("SELECT * FROM gm_snapshots ORDER BY taken_at DESC LIMIT 1").catch(() => [null]);
+      const metricLookup: Record<string, number | null> = {};
+      if (latestSnap) {
+        const ls = latestSnap as any;
+        metricLookup["active_accounts_7d"] = ls.active_accounts_7d || 0;
+        metricLookup["active_accounts_24h"] = ls.active_accounts_24h || 0;
+        metricLookup["active_players_7d"] = ls.active_accounts_7d || 0;
+        metricLookup["active_characters_7d"] = ls.active_characters_7d || 0;
+        metricLookup["active_characters_24h"] = ls.active_characters_24h || 0;
+        metricLookup["online_players"] = ls.total_online || 0;
+        metricLookup["avg_level"] = ls.avg_level;
+        metricLookup["max_level"] = ls.max_level;
+        metricLookup["total_meso"] = Number(ls.total_meso);
+        metricLookup["avg_meso_per_player"] = ls.avg_meso_per_player;
+        metricLookup["total_accounts"] = ls.total_accounts;
+        metricLookup["exp_rate"] = ls.exp_rate;
+        metricLookup["meso_rate"] = ls.meso_rate;
+        metricLookup["drop_rate"] = ls.drop_rate;
+        // Try to compute inflation from trends
+        try {
+          const trends = await api("/api/gm/trends?hours=24");
+          if (trends?.economy?.mesoInflationPerDay != null) {
+            metricLookup["meso_inflation_pct_day"] = trends.economy.mesoInflationPerDay;
+          }
+        } catch {}
+      }
+
       context += "\n\n## Active Goals\n";
       for (const g of goals as any[]) {
-        context += `- [#${g.id}] ${g.goal} — target: ${g.target_value} on \`${g.target_metric}\``;
-        if (g.current_value !== null) context += ` (current: ${g.current_value})`;
-        context += `\n`;
+        const metric = g.target_metric;
+        const autoValue = metricLookup[metric];
+        const currentValue = autoValue ?? g.current_value;
+
+        // Auto-update the DB if we computed a fresh value
+        if (autoValue != null && autoValue !== g.current_value) {
+          execute(
+            "UPDATE gm_goals SET current_value = ?, last_checked = NOW() WHERE id = ?",
+            [autoValue, g.id]
+          ).catch(() => {});
+        }
+
+        let status = "";
+        if (currentValue != null && g.target_value != null) {
+          const pct = Math.round((currentValue / g.target_value) * 100);
+          status = ` (current: ${currentValue}, ${pct}% of target)`;
+        } else if (currentValue != null) {
+          status = ` (current: ${currentValue})`;
+        }
+
+        context += `- [#${g.id}] ${g.goal} — target: ${g.target_value} on \`${metric}\`${status}\n`;
       }
     }
     const achieved = await dbQuery("SELECT * FROM gm_goals WHERE status = 'achieved' ORDER BY last_checked DESC LIMIT 5");
@@ -1245,6 +1407,26 @@ async function buildHistoricalContext(): Promise<string> {
       }
     }
   } catch { /* no sessions yet */ }
+
+  // Peak hours — when players are most active
+  try {
+    const hourlyData = await dbQuery(
+      `SELECT HOUR(taken_at) as hour, ROUND(AVG(total_online), 1) as avg_online,
+              MAX(total_online) as peak_online
+       FROM gm_snapshots
+       WHERE taken_at > DATE_SUB(NOW(), INTERVAL 7 DAY) AND total_online > 0
+       GROUP BY HOUR(taken_at)
+       ORDER BY avg_online DESC
+       LIMIT 5`
+    );
+    if ((hourlyData as any[]).length > 0) {
+      context += "\n\n## Peak Hours (last 7 days, UTC)\n";
+      for (const h of hourlyData as any[]) {
+        context += `- ${String(h.hour).padStart(2, "0")}:00 UTC — avg ${h.avg_online} online, peak ${h.peak_online}\n`;
+      }
+      context += "Time events to coincide with peak hours for maximum engagement.\n";
+    }
+  } catch { /* not enough snapshot data */ }
 
   return context;
 }
@@ -1366,11 +1548,11 @@ Your historical context includes item IDs from past events. Players may still ha
 
 // ---- Persistence helpers ----
 
-async function persistSessionStart(session: GMSession, prompt: string): Promise<void> {
+async function persistSessionStart(session: GMSession, prompt: string, systemPrompt?: string): Promise<void> {
   try {
     await execute(
-      "INSERT INTO gm_sessions (id, started_at, trigger_type, prompt, status) VALUES (?, NOW(), ?, ?, 'running')",
-      [session.id, session.trigger, prompt]
+      "INSERT INTO gm_sessions (id, started_at, trigger_type, prompt, system_prompt, status) VALUES (?, NOW(), ?, ?, ?, 'running')",
+      [session.id, session.trigger, prompt, systemPrompt || null]
     );
   } catch (err) {
     console.error("Failed to persist session start:", err);
@@ -1387,7 +1569,7 @@ async function persistSessionEnd(session: GMSession): Promise<void> {
       "UPDATE gm_sessions SET completed_at = NOW(), summary = ?, status = ?, changes_made = ?, full_log = ? WHERE id = ?",
       [session.summary || null, session.status, changesMade, JSON.stringify(session.log), session.id]
     );
-    if (session.status === "complete" && changesMade > 0 && session.trigger === "scheduled") {
+    if (session.status === "complete" && changesMade > 0) {
       await postDiscordUpdate(session).catch((err) =>
         console.error("Failed to post Discord update:", err)
       );
@@ -1520,12 +1702,12 @@ export async function runGameMaster(
     onUpdate(entry);
   };
 
-  await persistSessionStart(session, userPrompt);
-
   const historicalContext = await buildHistoricalContext();
   const systemPrompt = historicalContext
     ? BASE_SYSTEM_PROMPT + "\n\n---\n\n# Historical Context (from your memory)" + historicalContext
     : BASE_SYSTEM_PROMPT;
+
+  await persistSessionStart(session, userPrompt, systemPrompt);
 
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },
@@ -1544,7 +1726,7 @@ export async function runGameMaster(
         messages,
         tools: toolSchemas,
         temperature: 0.7,
-        max_tokens: 4096,
+        max_tokens: 16384,
       });
 
       const choice = response.choices[0];

@@ -43,6 +43,7 @@ interface PastSession {
   completedAt: string | null;
   trigger: string;
   prompt: string;
+  systemPrompt: string | null;
   summary: string | null;
   status: string;
   changesMade: number;
@@ -380,6 +381,7 @@ function GoalsPanel() {
 function PastSessionCard({ session, isScheduled }: { session: PastSession; isScheduled: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [actions, setActions] = useState<any[] | null>(null);
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
 
   const handleExpand = async () => {
     const next = !expanded;
@@ -425,7 +427,23 @@ function PastSessionCard({ session, isScheduled }: { session: PastSession; isSch
             </div>
           )}
           {session.prompt && (
-            <div className="text-[11px] text-text-muted"><span className="font-semibold text-text-secondary">Prompt:</span> {session.prompt}</div>
+            <div className="text-[11px] text-text-muted"><span className="font-semibold text-text-secondary">Prompt:</span> {session.prompt.length > 200 ? session.prompt.slice(0, 200) + "..." : session.prompt}</div>
+          )}
+          {session.systemPrompt && (
+            <div className="mt-1">
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowSystemPrompt(!showSystemPrompt); }}
+                className="text-[10px] font-medium text-accent-purple hover:text-accent-purple/80 transition-colors flex items-center gap-1"
+              >
+                <span className={`transition-transform inline-block ${showSystemPrompt ? "rotate-90" : ""}`}>&#9654;</span>
+                Full AI Prompt ({Math.round(session.systemPrompt.length / 1024)}KB)
+              </button>
+              {showSystemPrompt && (
+                <pre className="mt-2 rounded-lg bg-bg-primary/80 border border-border/30 px-3 py-2 text-[10px] text-text-muted font-mono whitespace-pre-wrap max-h-[500px] overflow-y-auto leading-relaxed">
+                  {session.systemPrompt}
+                </pre>
+              )}
+            </div>
           )}
           {actions && actions.length > 0 && (
             <div className="space-y-1.5 mt-2">

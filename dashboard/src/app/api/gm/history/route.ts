@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     if (type === "all" || type === "sessions") {
       const sessions = await query(
-        `SELECT id, started_at, completed_at, trigger_type, prompt, summary, status, changes_made FROM gm_sessions ORDER BY started_at DESC LIMIT ${limit}`
+        `SELECT id, started_at, completed_at, trigger_type, prompt, system_prompt, summary, status, changes_made FROM gm_sessions ORDER BY started_at DESC LIMIT ${limit}`
       );
       result.sessions = sessions.map((s: any) => ({
         id: s.id,
@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
         completedAt: s.completed_at,
         trigger: s.trigger_type,
         prompt: s.prompt,
+        systemPrompt: s.system_prompt || null,
         summary: s.summary,
         status: s.status,
         changesMade: s.changes_made,
