@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Build WHERE clause
-    const conditions = ["c.gm = 0"]; // Exclude GMs
+    const conditions = ["c.gm = 0", "c.name != 'admin'"]; // Exclude GMs and admin
     const params: any[] = [];
 
     if (job) {
@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get top characters with guild name
+    // Note: LIMIT is interpolated directly (already validated as int) to avoid mysql2 prepared statement issues
     const characters = await query<{
       id: number;
       name: string;
@@ -70,8 +71,8 @@ export async function GET(request: NextRequest) {
        LEFT JOIN guilds g ON c.guildid = g.guildid AND c.guildid > 0
        WHERE ${conditions.join(" AND ")}
        ORDER BY ${orderBy}
-       LIMIT ?`,
-      [...params, limit],
+       LIMIT ${limit}`,
+      params,
     );
 
     if (characters.length === 0) {
