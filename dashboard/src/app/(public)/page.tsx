@@ -69,6 +69,12 @@ export default function LandingPage() {
           <span className="text-xl font-bold tracking-wide">AugurMS</span>
         </div>
         <div className="flex items-center gap-4">
+          <Link
+            href="/rankings"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:text-text-primary"
+          >
+            Rankings
+          </Link>
           <a
             href="https://github.com/themrzmaster/augurms"
             target="_blank"
