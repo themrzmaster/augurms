@@ -43,7 +43,7 @@ function inferCategory(toolName: string): "rates" | "mobs" | "drops" | "spawns" 
 }
 
 const WRITE_TOOLS = new Set([
-  "update_character", "give_item_to_character",
+  "update_character", "give_item_to_character", "grant_nx",
   "update_mob", "batch_update_mobs",
   "add_mob_drop", "remove_mob_drop", "batch_update_drops",
   "add_map_spawn", "remove_map_spawn",
@@ -76,6 +76,9 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
 
   give_item_to_character: async ({ characterId, itemId, quantity }) =>
     JSON.stringify(await api(`/api/characters/${characterId}/inventory`, { method: "POST", body: JSON.stringify({ itemId, quantity: quantity || 1 }) })),
+
+  grant_nx: async ({ characterId, accountId, amount, type }) =>
+    JSON.stringify(await api("/api/gm/nx", { method: "POST", body: JSON.stringify({ characterId, accountId, amount, type: type || "nxCredit" }) })),
 
   search_mobs: async ({ query }) => {
     const data = await api(`/api/mobs${query ? `?q=${encodeURIComponent(query)}` : ""}`);
@@ -478,6 +481,24 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
           quantity: { type: "number", description: "Stack quantity (default 1). Equips are always 1." },
         },
         required: ["characterId", "itemId"],
+      },
+    },
+  },
+
+  {
+    type: "function",
+    function: {
+      name: "grant_nx",
+      description: "Grant NX Cash (cash shop currency) directly to a player's account. Takes effect on relog. NX is used to buy cosmetics, pets, and premium items in the Cash Shop. Use this to reward players directly. Max 100,000 per call.",
+      parameters: {
+        type: "object",
+        properties: {
+          characterId: { type: "number", description: "Character ID — will resolve to their account automatically" },
+          accountId: { type: "number", description: "Account ID — use if you know it directly (alternative to characterId)" },
+          amount: { type: "number", description: "Amount of NX to grant (positive integer, max 100,000)" },
+          type: { type: "string", enum: ["nxCredit", "maplePoint", "nxPrepaid"], description: "Currency type (default: nxCredit). nxCredit = NX Cash, maplePoint = Maple Points, nxPrepaid = NX Prepaid" },
+        },
+        required: ["amount"],
       },
     },
   },
@@ -1586,6 +1607,27 @@ Think of yourself as a game director who:
 - Create custom NPCs for vote point shops, event trade-ins, lore, and teleporters
 - Set goals to track player growth and retention
 
+## NX Cash — The Premium Currency
+NX (also called NX Cash or NX Credit) is the Cash Shop currency. Players use NX to buy cosmetics, pets, megaphones, and premium items from the in-game Cash Shop (press the $ button).
+
+### How NX Works
+- **NX Card 100** (item ID 4031865) = "Nexon Game Card - 100 points" — drops from all mobs as a global drop
+- **NX Card 250** (item ID 4031866) = "Nexon Game Card - 250 points" — drops from all mobs as a global drop
+- When a player **picks up an NX card from the ground**, it **auto-converts to NX Credit** on their account (it does NOT go to inventory). The player sees a hint: "You have earned 100 NX (XXX NX total)"
+- NX cards are Etc items (4000000 range) but have special server-side pickup logic — they behave differently from normal Etc items
+- Default global drop rates: NX Card 100 at 2000/1,000,000 (0.2%), NX Card 250 at 500/1,000,000 (0.05%)
+
+### How to Manage NX
+- **Adjust NX drop rates**: Use \`create_event\` with bonusDrops to add NX cards at higher rates, or modify global drops for items 4031865/4031866
+- **Grant NX directly**: Use \`grant_nx\` to add NX Credit to a player's account (takes effect on relog)
+- **NX card drops from reactors**: You can add NX cards (4031865, 4031866) as reactor drops — they auto-convert when picked up
+- **Spawn NX cards**: Use \`spawn_drop\` with itemId 4031865 or 4031866 to drop NX cards at a player's feet
+- If players say NX is hard to get, consider: increasing global drop rates, placing NX-dropping reactors in popular maps, or granting NX directly as rewards
+- Typical NX prices in Cash Shop: most items cost 1000-5000 NX. So 100 NX cards are small rewards; 250 NX cards are medium.
+
+### IMPORTANT — NX Cards vs give_item_to_character
+Do NOT use \`give_item_to_character\` with NX card item IDs (4031865, 4031866). That puts the card in inventory as a regular Etc item that CANNOT be redeemed. Instead, use \`grant_nx\` to add NX directly, or \`spawn_drop\` to drop NX cards on the ground (they auto-convert on pickup).
+
 ## Reactor Events — Your Secret Weapon
 You can place breakable objects (reactors) on maps that drop items when players hit them. This is incredibly engaging:
 - Search for reactor templates with \`search_reactors\` (eggs, boxes, plants, crystals, chests — 421 options)
@@ -1599,9 +1641,31 @@ You can place breakable objects (reactors) on maps that drop items when players 
 - **Reactor IDs** come from \`search_reactors\` — these are breakable map objects (e.g., "Gift Box", "Treasure Chest")
 - **Item IDs** are inventory items (e.g., 4031306 "Birthday Present (Red)", 2000005 "Power Elixir")
 - \`add_reactor_drop(reactorId, itemId)\` means: "when players break reactor X, drop item Y". The \`reactorId\` MUST be an actual reactor template ID from \`search_reactors\`, NOT an item ID.
-- **Etc items (category "etc", IDs 4000000-4999999) CANNOT be "opened" or "used" by players.** They just sit in inventory. If you want players to open mystery boxes, you MUST place an actual reactor on a map — the reactor is the breakable object, items are what come out.
-- **Correct workflow for "mystery box" events:** 1) \`search_reactors\` to find a box/chest/egg reactor, 2) \`add_map_reactor\` to place it on maps, 3) \`add_reactor_drop\` to configure loot. Do NOT add Etc items as global mob drops and expect players to "open" them.
-- When distributing items via global drops, always verify the item with \`get_item\` first — check its name, description, and category to make sure it does what you think.
+
+### ABSOLUTE RULE — Etc Items Are NOT Mystery Boxes
+**Etc items (category "etc", IDs 4000000-4999999) CANNOT be "opened", "used", or "consumed" by players.** They sit in inventory permanently with no interaction. There is NO mechanism in the game to open, use, or interact with Etc items.
+
+**NEVER do any of the following:**
+- Drop Etc items as "mystery boxes" or "presents" expecting players to open them — THEY CANNOT
+- Add items like "Birthday Present (Red)" (4031306), "Birthday Present (Blue)" (4031307) or ANY Etc item as global mob drops for a "mystery box" event — players will just accumulate useless inventory items
+- Tell players to "open" or "use" an Etc item — the game has no such feature
+- Create events where Etc items are described as openable, usable, or interactive
+
+**The ONLY way to create a "mystery box" experience:**
+1. \`search_reactors\` — find a box/chest/egg reactor template (e.g., "Gift Box", "Treasure Chest", "Easter Egg")
+2. \`add_map_reactor\` — place the reactor on maps where players will find it
+3. \`add_reactor_drop\` — configure what items come out when players break it
+Players physically hit the reactor object on the map and it drops items. This is the mystery box mechanic.
+
+**Good reactor IDs for mystery boxes** (search for more with \`search_reactors\`):
+- Search for "box", "chest", "gift", "present", "egg", "crystal" to find options
+
+### Item Distribution Best Practices
+- When distributing items via global drops, always verify the item with \`get_item\` first — check its name, description, and category
+- If the category is "etc", the item CANNOT be used or interacted with — only trade/collect
+- For consumable rewards, use category "consume" items (potions, scrolls, elixirs)
+- For NX rewards, use NX cards (4031865, 4031866) as drops or \`grant_nx\` directly
+- The only exception to the "etc items are useless" rule is NX cards (4031865, 4031866) which have special pickup logic
 
 ## Live Drops — Direct Player Rewards
 You can drop items directly in front of online players using \`spawn_drop\`. This is powerful but use it with restraint:
@@ -1779,6 +1843,8 @@ function summarizeToolCall(name: string, input: Record<string, any>): string {
         return `"${(input.goal || "").slice(0, 60)}"`;
       case "update_goal":
         return `goal #${input.id}${input.status ? ` → ${input.status}` : ""}`;
+      case "grant_nx":
+        return `${input.amount} ${input.type || "nxCredit"}${input.characterId ? ` to char ${input.characterId}` : ""}${input.accountId ? ` to account ${input.accountId}` : ""}`;
       case "spawn_drop":
         return `item ${input.itemId}${input.characterName ? ` to ${input.characterName}` : ""}`;
       case "give_item_to_character":
