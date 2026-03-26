@@ -29,13 +29,14 @@ async function api(path: string, options?: RequestInit) {
 
 // ---- Tool category inference ----
 
-function inferCategory(toolName: string): "rates" | "mobs" | "drops" | "spawns" | "shops" | "events" | "config" | "reactors" | "other" {
+function inferCategory(toolName: string): "rates" | "mobs" | "drops" | "spawns" | "shops" | "events" | "config" | "reactors" | "npcs" | "other" {
   if (toolName.includes("rate")) return "rates";
   if (toolName.includes("mob") || toolName.includes("batch_update_mobs")) return "mobs";
   if (toolName.includes("reactor")) return "reactors";
   if (toolName.includes("drop")) return "drops";
   if (toolName.includes("spawn") || toolName.includes("map")) return "spawns";
   if (toolName.includes("shop")) return "shops";
+  if (toolName.includes("npc")) return "npcs";
   if (toolName.includes("event")) return "events";
   if (toolName.includes("config")) return "config";
   return "other";
@@ -50,6 +51,7 @@ const WRITE_TOOLS = new Set([
   "add_reactor_drop", "remove_reactor_drop",
   "spawn_drop",
   "add_shop_item", "update_shop_price", "remove_shop_item",
+  "create_custom_npc", "update_custom_npc", "delete_custom_npc",
   "update_rates", "update_config",
   "create_event", "cleanup_event",
   "set_server_message",
@@ -162,6 +164,23 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
 
   remove_shop_item: async ({ shopId, itemId }) =>
     JSON.stringify(await api(`/api/gm/shops/${shopId}/items`, { method: "DELETE", body: JSON.stringify({ itemId }) })),
+
+  // ── Custom NPCs ──
+
+  list_custom_npcs: async () =>
+    JSON.stringify(await api("/api/gm/npcs")),
+
+  get_custom_npc: async ({ npcId }) =>
+    JSON.stringify(await api(`/api/gm/npcs?npcId=${npcId}`)),
+
+  create_custom_npc: async ({ npcId, name, type, config }) =>
+    JSON.stringify(await api("/api/gm/npcs", { method: "POST", body: JSON.stringify({ npcId, name, type, config }) })),
+
+  update_custom_npc: async ({ npcId, name, type, config, enabled }) =>
+    JSON.stringify(await api("/api/gm/npcs", { method: "PUT", body: JSON.stringify({ npcId, name, type, config, enabled }) })),
+
+  delete_custom_npc: async ({ npcId }) =>
+    JSON.stringify(await api("/api/gm/npcs", { method: "DELETE", body: JSON.stringify({ npcId }) })),
 
   get_rates: async () =>
     JSON.stringify(await api("/api/gm/rates")),
@@ -880,6 +899,88 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
     },
   },
 
+  // ── Custom NPCs (database-driven, no restart needed) ──
+  {
+    type: "function",
+    function: {
+      name: "list_custom_npcs",
+      description: "List all custom NPCs created by the Game Master. Returns their npc_id, name, type, config, and enabled status.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_custom_npc",
+      description: "Get details of a specific custom NPC by its NPC ID.",
+      parameters: {
+        type: "object",
+        properties: { npcId: { type: "number", description: "The NPC ID" } },
+        required: ["npcId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_custom_npc",
+      description: `Create a custom NPC with database-driven behavior. The NPC reads its config from the DB at runtime — no server restart needed to change behavior. After creating the NPC config, use add_map_spawn to place the NPC on a map.
+
+IMPORTANT: The npcId you pick must be an existing NPC model in the game client (it determines the sprite shown). Use any NPC ID that exists in the game (e.g. 9010000 for a generic NPC). The same model can only have one custom config.
+
+Types:
+- "exchange": Currency shop. Players spend votepoints, meso, or items to buy things. Set currency to "votepoints", "meso", or an item ID (as string).
+- "dialogue": Multi-page text NPC. Good for lore, announcements, guides.
+- "teleporter": Warp menu. Players pick a destination, optionally pay meso.`,
+      parameters: {
+        type: "object",
+        properties: {
+          npcId: { type: "number", description: "NPC model ID (determines sprite). Must exist in game client." },
+          name: { type: "string", description: "Display name shown in NPC dialogue header" },
+          type: { type: "string", enum: ["exchange", "dialogue", "teleporter"], description: "NPC behavior type" },
+          config: {
+            type: "object",
+            description: `Type-specific config. Examples:
+exchange: {"currency":"votepoints","currency_name":"Vote Points","greeting":"Welcome!","items":[{"itemId":2049100,"price":3,"quantity":1}]}
+dialogue: {"pages":["Page 1 text","Page 2 text"]}
+teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"Henesys","cost":0}]}`,
+          },
+        },
+        required: ["npcId", "name", "type", "config"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_custom_npc",
+      description: "Update an existing custom NPC's config, name, type, or enabled status. Changes take effect immediately on next player interaction (no restart needed).",
+      parameters: {
+        type: "object",
+        properties: {
+          npcId: { type: "number", description: "NPC ID to update" },
+          name: { type: "string", description: "New display name (optional)" },
+          type: { type: "string", enum: ["exchange", "dialogue", "teleporter"], description: "New type (optional)" },
+          config: { type: "object", description: "New config object (optional, replaces entire config)" },
+          enabled: { type: "boolean", description: "Enable or disable the NPC (optional)" },
+        },
+        required: ["npcId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_custom_npc",
+      description: "Delete a custom NPC config. The NPC spawn on the map remains but will show 'not available' when clicked. Use remove_map_spawn to also remove the spawn.",
+      parameters: {
+        type: "object",
+        properties: { npcId: { type: "number", description: "NPC ID to delete" } },
+        required: ["npcId"],
+      },
+    },
+  },
+
   // ── Server Rates ──
   {
     type: "function",
@@ -1228,24 +1329,29 @@ async function buildHistoricalContext(): Promise<string> {
 
       if (hasDrops) {
         const uniqueItemIds = [...new Set((globalDrops as any[]).map((d: any) => Number(d.itemid)))];
-        const dropItemNames: Record<number, string> = {};
+        const dropItemInfo: Record<number, { name: string; category: string }> = {};
         try {
           const results = await Promise.allSettled(
             uniqueItemIds.slice(0, 15).map(async (id) => {
               const data = await api(`/api/items/${id}`);
-              return { id, name: data?.name || null };
+              return { id, name: data?.name || null, category: data?.category || null };
             })
           );
           for (const r of results) {
-            if (r.status === "fulfilled" && r.value.name) dropItemNames[r.value.id] = r.value.name;
+            if (r.status === "fulfilled" && r.value.name) {
+              dropItemInfo[r.value.id] = { name: r.value.name, category: r.value.category || "unknown" };
+            }
           }
         } catch {}
 
         context += "\n### Global Drops (all mobs drop these)\n";
         for (const d of globalDrops as any[]) {
-          const name = dropItemNames[d.itemid] || `Item ${d.itemid}`;
+          const info = dropItemInfo[d.itemid];
+          const name = info?.name || `Item ${d.itemid}`;
+          const cat = info?.category || "unknown";
           const pct = (d.chance / 10000).toFixed(1);
-          context += `- ${name} (${d.itemid}) at ${pct}% chance${d.comments ? ` [${d.comments}]` : ""}\n`;
+          const warning = cat === "etc" ? " ⚠️ Etc item — players CANNOT open/use this, it just sits in inventory" : "";
+          context += `- ${name} (${d.itemid}) [${cat}] at ${pct}% chance${d.comments ? ` [${d.comments}]` : ""}${warning}\n`;
         }
       }
 
@@ -1280,27 +1386,37 @@ async function buildHistoricalContext(): Promise<string> {
         for (const m of input.matchAll(/"itemid"\s*:\s*(\d+)/gi)) itemIds.add(m[1]);
       }
       if (itemIds.size > 0) {
-        // Resolve item names
-        const pastItemNames: Record<string, string> = {};
+        // Resolve item names and categories
+        const pastItems: Record<string, { name: string; category: string }> = {};
         try {
           const results = await Promise.allSettled(
             [...itemIds].slice(0, 15).map(async (id) => {
               const data = await api(`/api/items/${id}`);
-              return { id, name: data?.name || null };
+              return { id, name: data?.name || null, category: data?.category || null };
             })
           );
           for (const r of results) {
-            if (r.status === "fulfilled" && r.value.name) pastItemNames[r.value.id] = r.value.name;
+            if (r.status === "fulfilled" && r.value.name) {
+              pastItems[r.value.id] = { name: r.value.name, category: r.value.category || "unknown" };
+            }
           }
         } catch {}
 
         context += `\n\n## Past Event Items (players may still hold these)\n`;
-        const itemList = [...itemIds].map(id => {
-          const name = pastItemNames[id];
-          return name ? `${name} (${id})` : `Item ${id}`;
-        }).join(", ");
-        context += `Items from your past events: ${itemList}\n`;
-        context += `Consider reusing these for trade-ins, exchanges, or follow-up events.\n`;
+        context += `Items from your past events:\n`;
+        for (const id of itemIds) {
+          const info = pastItems[id];
+          if (info) {
+            const usability = info.category === "etc" ? " — **Etc item: sits in inventory, CANNOT be opened/used by players**"
+              : info.category === "consume" ? " — Consumable: players can use this"
+              : info.category === "equip" ? " — Equipment: players can wear this"
+              : "";
+            context += `- ${info.name} (${id}) [${info.category}]${usability}\n`;
+          } else {
+            context += `- Item ${id} [unknown]\n`;
+          }
+        }
+        context += `\nConsider reusing these for trade-ins, exchanges, or follow-up events. For Etc items, players need a way to USE them (e.g., NPC exchange, reactor reward) — otherwise they are dead inventory.\n`;
       }
     }
   } catch { /* ignore */ }
@@ -1467,6 +1583,7 @@ Think of yourself as a game director who:
 - Add temporary bonus drops or special spawns for variety
 - Set server announcements to build hype and FOMO
 - Place interesting mobs in underused maps to make exploration rewarding
+- Create custom NPCs for vote point shops, event trade-ins, lore, and teleporters
 - Set goals to track player growth and retention
 
 ## Reactor Events — Your Secret Weapon
@@ -1476,6 +1593,15 @@ You can place breakable objects (reactors) on maps that drop items when players 
 - Configure their drops with \`add_reactor_drop\`
 - Players discover them, break them, get loot — pure dopamine
 - Use for: treasure hunts, Easter eggs, hidden rewards, map exploration incentives
+
+### CRITICAL — Reactor IDs vs Item IDs
+**Reactor IDs and Item IDs are COMPLETELY DIFFERENT systems.** Do NOT confuse them:
+- **Reactor IDs** come from \`search_reactors\` — these are breakable map objects (e.g., "Gift Box", "Treasure Chest")
+- **Item IDs** are inventory items (e.g., 4031306 "Birthday Present (Red)", 2000005 "Power Elixir")
+- \`add_reactor_drop(reactorId, itemId)\` means: "when players break reactor X, drop item Y". The \`reactorId\` MUST be an actual reactor template ID from \`search_reactors\`, NOT an item ID.
+- **Etc items (category "etc", IDs 4000000-4999999) CANNOT be "opened" or "used" by players.** They just sit in inventory. If you want players to open mystery boxes, you MUST place an actual reactor on a map — the reactor is the breakable object, items are what come out.
+- **Correct workflow for "mystery box" events:** 1) \`search_reactors\` to find a box/chest/egg reactor, 2) \`add_map_reactor\` to place it on maps, 3) \`add_reactor_drop\` to configure loot. Do NOT add Etc items as global mob drops and expect players to "open" them.
+- When distributing items via global drops, always verify the item with \`get_item\` first — check its name, description, and category to make sure it does what you think.
 
 ## Live Drops — Direct Player Rewards
 You can drop items directly in front of online players using \`spawn_drop\`. This is powerful but use it with restraint:
@@ -1514,10 +1640,36 @@ You have persistent memory via snapshots, action logs, and goals.
 - Use goals to maintain persistent objectives
 - It's perfectly fine to observe and do nothing if the game is healthy
 
+## Custom NPCs — Build Interactive Content
+You can create database-driven NPCs that players can interact with. These are powerful for shops, lore, and world-building:
+
+### How It Works
+1. **Create the NPC config** with \`create_custom_npc\` — defines what the NPC does
+2. **Spawn it on a map** with \`add_map_spawn\` — places the NPC where players can click it
+3. **Update anytime** with \`update_custom_npc\` — changes take effect immediately, no restart needed
+
+### NPC Types
+- **exchange** — Currency shop. Players spend vote points, meso, or items to buy things. Set \`currency\` to \`"votepoints"\`, \`"meso"\`, or an item ID string (e.g. \`"4001126"\` for Maple Leaves).
+- **dialogue** — Multi-page text NPC. Great for lore, event announcements, guides, story NPCs.
+- **teleporter** — Warp menu with optional meso cost per destination.
+
+### Key Rules
+- The \`npcId\` determines the NPC's visual appearance (sprite). Use any existing NPC ID from the game (e.g. 9010000). You can search for NPCs to find good models.
+- Each \`npcId\` can only have one config. To create multiple custom NPCs, use different NPC IDs.
+- Use \`list_custom_npcs\` to see what you've already created before making new ones.
+- Vote point shops are especially valuable — they reward players who vote and give them something to spend points on.
+
+### Use Cases
+- Create a **vote point shop** so players have a reason to vote daily
+- Place **lore NPCs** that hint at upcoming events or tell the Augur's story
+- Set up **teleporters** in towns to help players travel between training spots
+- Build **event NPCs** that trade event items for rewards (connects to your reactor events)
+- Create **trade-in NPCs** for items from past events — rewards loyal players
+
 ## Event Continuity — Reuse Past Items
 Your historical context includes item IDs from past events. Players may still have these items in their inventory. This is an opportunity:
-- Create **trade-in NPCs or follow-up events** that give value to items from past events
-- Example: "Bring 50 Spirit Jewels to the NPC for a special scroll" or "Spirit Jewels now power a new reactor"
+- Create **trade-in NPCs** using \`create_custom_npc\` with type "exchange" to let players trade event items for rewards
+- Example: Let players trade 50 Spirit Jewels for a special scroll via a custom exchange NPC
 - This rewards loyal players who held onto event items and creates a sense of a living, connected world
 - Check \`get_my_history\` for details on what items you distributed and in what quantities
 
@@ -1613,6 +1765,12 @@ function summarizeToolCall(name: string, input: Record<string, any>): string {
         return `item ${input.itemId} to shop ${input.shopId} for ${input.price?.toLocaleString()} meso`;
       case "update_shop_price":
         return `item ${input.itemId} in shop ${input.shopId} to ${input.price?.toLocaleString()} meso`;
+      case "create_custom_npc":
+        return `"${input.name}" (npc ${input.npcId}, ${input.type})`;
+      case "update_custom_npc":
+        return `npc ${input.npcId}${input.enabled === false ? " (disabled)" : ""}`;
+      case "delete_custom_npc":
+        return `npc ${input.npcId}`;
       case "set_server_message":
         return `"${(input.message || "").slice(0, 60)}"`;
       case "cleanup_event":

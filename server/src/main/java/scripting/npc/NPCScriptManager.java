@@ -133,6 +133,10 @@ public class NPCScriptManager extends AbstractScriptManager {
                     engine = getInvocableScriptEngine("npc/" + npc + ".js", c);
                     cm.resetItemScript();
                 }
+                if (engine == null && isGmNpc(npc)) {
+                    engine = getInvocableScriptEngine("npc/9900100.js", c);
+                    cm.resetItemScript();
+                }
                 if (engine == null) {
                     dispose(c);
                     return false;
@@ -190,6 +194,8 @@ public class NPCScriptManager extends AbstractScriptManager {
             resetContext(scriptFolder + "/" + cm.getScriptName() + ".js", c);
         } else {
             resetContext(scriptFolder + "/" + cm.getNpc() + ".js", c);
+            // Also reset universal script cache if this was a GM-created NPC
+            resetContext("npc/9900100.js", c);
         }
 
         c.getPlayer().flushDelayedUpdateQuests();
@@ -204,6 +210,24 @@ public class NPCScriptManager extends AbstractScriptManager {
 
     public NPCConversationManager getCM(Client c) {
         return cms.get(c);
+    }
+
+    /**
+     * Check if an NPC ID has a config row in the gm_npcs table.
+     * Used to fall back to the universal NPC script (9900100.js)
+     * for AI Game Master-created NPCs.
+     */
+    private boolean isGmNpc(int npcId) {
+        try (java.sql.Connection con = tools.DatabaseConnection.getConnection();
+             java.sql.PreparedStatement ps = con.prepareStatement(
+                     "SELECT 1 FROM gm_npcs WHERE npc_id = ? AND enabled = 1")) {
+            ps.setInt(1, npcId);
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (Exception e) {
+            return false;
+        }
     }
 
 }
