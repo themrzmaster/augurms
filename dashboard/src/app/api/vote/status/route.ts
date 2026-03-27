@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
     votePoints: accounts[0].votepoints,
     sites: {
       gtop100: sites.gtop100 || { lastVote: null, canVote: true, nextVoteAt: null },
+      topg: sites.topg || { lastVote: null, canVote: true, nextVoteAt: null },
     },
   });
 }

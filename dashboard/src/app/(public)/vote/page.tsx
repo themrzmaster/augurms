@@ -4,16 +4,20 @@ import { useState } from "react";
 import Link from "next/link";
 
 const GTOP100_SITE_ID = "105823";
+const TOPG_SITE_ID = "680931";
+
+interface SiteStatus {
+  lastVote: string | null;
+  canVote: boolean;
+  nextVoteAt: string | null;
+}
 
 interface VoteStatus {
   username: string;
   votePoints: number;
   sites: {
-    gtop100: {
-      lastVote: string | null;
-      canVote: boolean;
-      nextVoteAt: string | null;
-    };
+    gtop100: SiteStatus;
+    topg: SiteStatus;
   };
 }
 
@@ -57,6 +61,9 @@ export default function VotePage() {
   function getVoteUrl(site: string) {
     if (site === "gtop100") {
       return `https://gtop100.com/MapleStory/server-${GTOP100_SITE_ID}?vote=1&pingUsername=${encodeURIComponent(username)}`;
+    }
+    if (site === "topg") {
+      return `https://topg.org/maplestory-private-servers/server-${TOPG_SITE_ID}-${encodeURIComponent(username)}#vote`;
     }
     return "#";
   }
@@ -139,6 +146,27 @@ export default function VotePage() {
                   <p className="text-sm text-text-muted">Already voted today</p>
                   <p className="mt-1 text-xs text-text-muted">
                     Next vote in {getTimeUntil(status.sites.gtop100.nextVoteAt!)}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-border bg-bg-card p-4">
+              <h3 className="mb-3 text-sm font-semibold">TopG</h3>
+              {status.sites.topg.canVote ? (
+                <a
+                  href={getVoteUrl("topg")}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full rounded-lg bg-green-600 py-2.5 text-center text-sm font-bold text-white transition hover:bg-green-500"
+                >
+                  Vote Now (+1 VP)
+                </a>
+              ) : (
+                <div className="text-center">
+                  <p className="text-sm text-text-muted">Already voted today</p>
+                  <p className="mt-1 text-xs text-text-muted">
+                    Next vote in {getTimeUntil(status.sites.topg.nextVoteAt!)}
                   </p>
                 </div>
               )}
