@@ -38,6 +38,11 @@ If this is one of your first runs, focus on observation, goal-setting, and maybe
 // Optional body: { prompt?: string } to override the default prompt
 export async function POST(request: NextRequest) {
   // Check if another session is already running
+  // Auto-expire sessions stuck for more than 10 minutes
+  await execute(
+    "UPDATE gm_sessions SET status = 'error', completed_at = NOW(), summary = 'Auto-expired: session timed out after 10 minutes' WHERE status = 'running' AND started_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)"
+  );
+
   const running = await query(
     "SELECT id FROM gm_sessions WHERE status = 'running' LIMIT 1"
   );

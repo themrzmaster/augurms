@@ -24,6 +24,11 @@ export async function GET() {
       });
     }
 
+    // Auto-expire stuck sessions before triggering a new run
+    await execute(
+      "UPDATE gm_sessions SET status = 'error', completed_at = NOW(), summary = 'Auto-expired: session timed out after 10 minutes' WHERE status = 'running' AND started_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)"
+    );
+
     // It's time to run — trigger the cron endpoint
     const BASE = process.env.COSMIC_DASHBOARD_URL || "http://localhost:3000";
     const res = await fetch(`${BASE}/api/gm/cron`, {
