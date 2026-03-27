@@ -173,17 +173,17 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
   list_custom_npcs: async () =>
     JSON.stringify(await api("/api/gm/npcs")),
 
-  get_custom_npc: async ({ npcId }) =>
-    JSON.stringify(await api(`/api/gm/npcs?npcId=${npcId}`)),
+  get_custom_npc: async ({ name }) =>
+    JSON.stringify(await api(`/api/gm/npcs?name=${encodeURIComponent(name)}`)),
 
-  create_custom_npc: async ({ npcId, name, type, config }) =>
-    JSON.stringify(await api("/api/gm/npcs", { method: "POST", body: JSON.stringify({ npcId, name, type, config }) })),
+  create_custom_npc: async ({ npcId, name, type, config, mapId, x, y, fh }) =>
+    JSON.stringify(await api("/api/gm/npcs", { method: "POST", body: JSON.stringify({ npcId, name, type, config, mapId, x, y, fh }) })),
 
-  update_custom_npc: async ({ npcId, name, type, config, enabled }) =>
-    JSON.stringify(await api("/api/gm/npcs", { method: "PUT", body: JSON.stringify({ npcId, name, type, config, enabled }) })),
+  update_custom_npc: async ({ name, newName, type, config, enabled }) =>
+    JSON.stringify(await api("/api/gm/npcs", { method: "PUT", body: JSON.stringify({ name, newName, type, config, enabled }) })),
 
-  delete_custom_npc: async ({ npcId }) =>
-    JSON.stringify(await api("/api/gm/npcs", { method: "DELETE", body: JSON.stringify({ npcId }) })),
+  delete_custom_npc: async ({ name }) =>
+    JSON.stringify(await api("/api/gm/npcs", { method: "DELETE", body: JSON.stringify({ name }) })),
 
   get_rates: async () =>
     JSON.stringify(await api("/api/gm/rates")),
@@ -937,8 +937,8 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
       description: "Get details of a specific custom NPC by its NPC ID.",
       parameters: {
         type: "object",
-        properties: { npcId: { type: "number", description: "The NPC ID" } },
-        required: ["npcId"],
+        properties: { name: { type: "string", description: "NPC name to look up" } },
+        required: ["name"],
       },
     },
   },
@@ -946,29 +946,52 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "create_custom_npc",
-      description: `Create a custom NPC with database-driven behavior. The NPC reads its config from the DB at runtime — no server restart needed to change behavior. After creating the NPC config, use add_map_spawn to place the NPC on a map.
+      description: `Create and spawn a custom NPC on a map in one step. The NPC reads its behavior from the DB at runtime — no server restart needed to change config later.
 
-IMPORTANT: The npcId you pick must be an existing NPC model in the game client (it determines the sprite shown). Use any NPC ID that exists in the game (e.g. 9010000 for a generic NPC). The same model can only have one custom config.
+Available NPC appearances (pick one):
+- 9000018: Matilda (woman with cat, good for shops)
+- 9000003: Vikan (warrior-looking man)
+- 9000005: Vikone (female character)
+- 9000042: Gaga (quirky character)
+- 9000055: Aramia (elegant woman)
+- 9010005: Diane (young woman)
+- 9010006: Sally (young woman)
+- 9010007: Josh (young man)
+- 9201076: Ludmilla (mysterious woman)
+- 9201136: Olivia (friendly woman)
+- 9300010: Mr. Moneybags (rich man, great for shops)
+- 9201028: Malady (dark themed)
 
-Types:
-- "exchange": Currency shop. Players spend votepoints, meso, or items to buy things. Set currency to "votepoints", "meso", or an item ID (as string).
-- "dialogue": Multi-page text NPC. Good for lore, announcements, guides.
-- "teleporter": Warp menu. Players pick a destination, optionally pay meso.`,
+NPC types:
+- "exchange": Currency shop. Players trade votepoints/meso/items for rewards.
+- "dialogue": Multi-page text. Good for lore, announcements, guides.
+- "teleporter": Warp menu. Players pick a destination.
+
+The backend handles map spawning and script routing automatically. Takes effect on next server restart.`,
       parameters: {
         type: "object",
         properties: {
-          npcId: { type: "number", description: "NPC model ID (determines sprite). Must exist in game client." },
+          npcId: { type: "number", description: "NPC appearance ID from the list above" },
           name: { type: "string", description: "Display name shown in NPC dialogue header" },
           type: { type: "string", enum: ["exchange", "dialogue", "teleporter"], description: "NPC behavior type" },
           config: {
             type: "object",
-            description: `Type-specific config. Item prices MUST use "price" key (not "cost"). Always include "currency_name". Examples:
+            description: `Type-specific config object.
+
 exchange: {"currency":"votepoints","currency_name":"Vote Points","greeting":"Welcome!","items":[{"itemId":2049100,"price":3,"quantity":1}]}
+  - currency: "votepoints", "meso", or item ID as string
+  - items[].price: cost in the chosen currency (MUST use "price" key)
+
 dialogue: {"pages":["Page 1 text","Page 2 text"]}
+
 teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"Henesys","cost":0}]}`,
           },
+          mapId: { type: "number", description: "Map ID to spawn the NPC on" },
+          x: { type: "number", description: "X position on the map" },
+          y: { type: "number", description: "Y position on the map" },
+          fh: { type: "number", description: "Foothold value (use get_map to find fh from nearby spawns at similar coordinates)" },
         },
-        required: ["npcId", "name", "type", "config"],
+        required: ["npcId", "name", "type", "config", "mapId", "x", "y"],
       },
     },
   },
@@ -976,17 +999,17 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
     type: "function",
     function: {
       name: "update_custom_npc",
-      description: "Update an existing custom NPC's config, name, type, or enabled status. Changes take effect immediately on next player interaction (no restart needed).",
+      description: "Update an existing custom NPC by name. Changes take effect immediately on next player interaction (no restart needed).",
       parameters: {
         type: "object",
         properties: {
-          npcId: { type: "number", description: "NPC ID to update" },
-          name: { type: "string", description: "New display name (optional)" },
+          name: { type: "string", description: "Current NPC name to find and update" },
+          newName: { type: "string", description: "New display name (optional)" },
           type: { type: "string", enum: ["exchange", "dialogue", "teleporter"], description: "New type (optional)" },
           config: { type: "object", description: "New config object (optional, replaces entire config)" },
           enabled: { type: "boolean", description: "Enable or disable the NPC (optional)" },
         },
-        required: ["npcId"],
+        required: ["name"],
       },
     },
   },
@@ -994,11 +1017,11 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
     type: "function",
     function: {
       name: "delete_custom_npc",
-      description: "Delete a custom NPC config. The NPC spawn on the map remains but will show 'not available' when clicked. Use remove_map_spawn to also remove the spawn.",
+      description: "Delete a custom NPC by name. Also removes its map spawn. Takes effect on server restart.",
       parameters: {
         type: "object",
-        properties: { npcId: { type: "number", description: "NPC ID to delete" } },
-        required: ["npcId"],
+        properties: { name: { type: "string", description: "NPC name to delete" } },
+        required: ["name"],
       },
     },
   },
@@ -1756,24 +1779,16 @@ You can create database-driven NPCs that players can interact with. These are po
 - **teleporter** — Warp menu with optional meso cost per destination.
 
 ### Key Rules
-- The \`npcId\` determines the NPC's visual appearance (sprite) AND must be an interactive NPC in the client.
-- **IMPORTANT: NPC 9010000 (Maple Administrator) is NOT interactive** — the client shows a speech bubble but never sends a talk request to the server. Do NOT use it.
-- **Safe interactive NPC IDs for custom NPCs** (tested and confirmed to send talk packets to the server):
-  - 2012018 (Ericsson) — currently used for Vote Sage in Henesys
-- **DO NOT use these NPC IDs** — they are non-interactive (client shows speech bubble only, no server packet):
-  - 9010000 (Maple Administrator) — BROKEN, never use
-  - 9200000 (Cody) — BROKEN, never use
-  - Any NPC already placed on a map in the WZ data may be non-interactive
-- When creating new custom NPCs, prefer NPC IDs that are NOT already on the target map's WZ data. Use \`search_maps\` to check what NPCs exist on a map before placing.
-- Each \`npcId\` can only have one config. To create multiple custom NPCs, use different NPC IDs from the list above.
-- Use \`list_custom_npcs\` to see what you've already created before making new ones.
-- After creating a custom NPC, you MUST spawn it on a map with \`add_map_spawn\` — the NPC won't appear until placed.
+- The \`create_custom_npc\` tool handles everything: picks a valid NPC appearance, creates the config, AND spawns it on the map.
+- Only use NPC IDs from the list in the tool description — the backend validates them. Other IDs will be rejected.
+- Each NPC appearance can only be used once. Use \`list_custom_npcs\` to see what's taken.
+- Use \`update_custom_npc\` to change an NPC's shop items, dialogue, or destinations — changes are instant (no restart).
 - Vote point shops are especially valuable — they reward players who vote and give them something to spend points on.
 
 ### Use Cases
-- Create a **vote point shop** so players have a reason to vote daily
-- Place **lore NPCs** that hint at upcoming events or tell the Augur's story
-- Set up **teleporters** in towns to help players travel between training spots
+- Create a **vote point shop** (exchange type) so players have a reason to vote daily
+- Place **lore NPCs** (dialogue type) that hint at upcoming events or tell the Augur's story
+- Set up **teleporters** (teleporter type) in towns to help players travel between training spots
 - Build **event NPCs** that trade event items for rewards (connects to your reactor events)
 - Create **trade-in NPCs** for items from past events — rewards loyal players
 
@@ -1876,11 +1891,11 @@ function summarizeToolCall(name: string, input: Record<string, any>): string {
       case "update_shop_price":
         return `item ${input.itemId} in shop ${input.shopId} to ${input.price?.toLocaleString()} meso`;
       case "create_custom_npc":
-        return `"${input.name}" (npc ${input.npcId}, ${input.type})`;
+        return `"${input.name}" (${input.type}) on map ${input.mapId}`;
       case "update_custom_npc":
-        return `npc ${input.npcId}${input.enabled === false ? " (disabled)" : ""}`;
+        return `"${input.name}"${input.enabled === false ? " (disabled)" : ""}`;
       case "delete_custom_npc":
-        return `npc ${input.npcId}`;
+        return `"${input.name}"`;
       case "set_server_message":
         return `"${(input.message || "").slice(0, 60)}"`;
       case "cleanup_event":

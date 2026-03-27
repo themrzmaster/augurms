@@ -12,12 +12,52 @@ interface GmNpc {
   updated_at: string;
 }
 
-// GET - list all custom NPCs, or get one by npcId query param
+// NPC IDs verified to have interactive WZ data (client `script` field).
+// NPCs without this field are decoration-only — players can't click them.
+const INTERACTIVE_NPC_IDS = new Set([
+  9000018, // Matilda (woman with cat)
+  9000003, // Vikan (warrior man)
+  9000005, // Vikone (female character)
+  9000042, // Gaga (quirky character)
+  9000055, // Aramia (elegant woman)
+  9010005, // Diane (young woman)
+  9010006, // Sally (young woman)
+  9010007, // Josh (young man)
+  9201076, // Ludmilla (mysterious woman)
+  9201136, // Olivia (friendly woman)
+  9300010, // Mr. Moneybags (rich man)
+  9201028, // Malady (dark themed)
+  9000035, // Agent P
+  9000039, // Agent W
+  9201091, // O-Pongo
+  9201117, // Toh Relicseeker
+]);
+
+function parseConfig(row: GmNpc) {
+  return {
+    ...row,
+    config: typeof row.config === "string" ? JSON.parse(row.config) : row.config,
+  };
+}
+
+// GET - list all custom NPCs, or get one by name query param
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
+  const name = searchParams.get("name");
   const npcId = searchParams.get("npcId");
 
   try {
+    if (name) {
+      const rows = await query<GmNpc>(
+        "SELECT * FROM gm_npcs WHERE name = ?",
+        [name],
+      );
+      if (rows.length === 0) {
+        return NextResponse.json({ error: "Custom NPC not found" }, { status: 404 });
+      }
+      return NextResponse.json(parseConfig(rows[0]));
+    }
+
     if (npcId) {
       const rows = await query<GmNpc>(
         "SELECT * FROM gm_npcs WHERE npc_id = ?",
@@ -26,20 +66,11 @@ export async function GET(request: NextRequest) {
       if (rows.length === 0) {
         return NextResponse.json({ error: "Custom NPC not found" }, { status: 404 });
       }
-      const row = rows[0];
-      return NextResponse.json({
-        ...row,
-        config: typeof row.config === "string" ? JSON.parse(row.config) : row.config,
-      });
+      return NextResponse.json(parseConfig(rows[0]));
     }
 
     const rows = await query<GmNpc>("SELECT * FROM gm_npcs ORDER BY created_at DESC");
-    return NextResponse.json(
-      rows.map((r) => ({
-        ...r,
-        config: typeof r.config === "string" ? JSON.parse(r.config) : r.config,
-      })),
-    );
+    return NextResponse.json(rows.map(parseConfig));
   } catch (err: any) {
     return NextResponse.json(
       { error: "Failed to fetch custom NPCs", details: err.message },
@@ -48,14 +79,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - create a new custom NPC
+// POST - create a new custom NPC + auto-spawn on map
 export async function POST(request: NextRequest) {
   try {
-    const { npcId, name, type, config } = await request.json();
+    const { npcId, name, type, config, mapId, x, y, fh } = await request.json();
 
-    if (!npcId || !name || !type || !config) {
+    if (!name || !type || !config) {
       return NextResponse.json(
-        { error: "npcId, name, type, and config are required" },
+        { error: "name, type, and config are required" },
         { status: 400 },
       );
     }
@@ -68,25 +99,65 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const configStr = typeof config === "string" ? config : JSON.stringify(config);
+    // Validate NPC ID is from the interactive pool
+    const chosenId = npcId || 9000018; // default to Matilda
+    if (!INTERACTIVE_NPC_IDS.has(chosenId)) {
+      return NextResponse.json(
+        { error: `NPC ID ${chosenId} is not interactive. Use one of: ${[...INTERACTIVE_NPC_IDS].join(", ")}` },
+        { status: 400 },
+      );
+    }
+
+    // Normalize config: ensure "price" key is used (not "cost")
+    const configObj = typeof config === "string" ? JSON.parse(config) : config;
+    if (configObj.items) {
+      for (const item of configObj.items) {
+        if (item.cost !== undefined && item.price === undefined) {
+          item.price = item.cost;
+          delete item.cost;
+        }
+      }
+    }
+    // Auto-set currency_name if missing
+    if (!configObj.currency_name && configObj.currency === "votepoints") {
+      configObj.currency_name = "Vote Points";
+    }
+
+    const configStr = JSON.stringify(configObj);
 
     const result = await execute(
       "INSERT INTO gm_npcs (npc_id, name, type, config) VALUES (?, ?, ?, ?)",
-      [npcId, name, type, configStr],
+      [chosenId, name, type, configStr],
     );
+
+    // Auto-spawn on map if mapId + coords provided
+    let spawnMessage = "";
+    if (mapId !== undefined && x !== undefined && y !== undefined) {
+      const foothold = fh || 0;
+      const cy = y;
+      const rx0 = x - 50;
+      const rx1 = x + 50;
+      await execute(
+        `INSERT INTO plife (world, map, life, type, cy, f, fh, rx0, rx1, x, y, hide, mobtime)
+         VALUES (0, ?, ?, 'n', ?, 0, ?, ?, ?, ?, ?, 0, -1)`,
+        [mapId, chosenId, cy, foothold, rx0, rx1, x, y],
+      );
+      spawnMessage = ` Spawned on map ${mapId} at (${x}, ${y}). Takes effect on server restart.`;
+    }
 
     return NextResponse.json(
       {
         success: true,
         id: result.insertId,
-        message: `Created custom NPC "${name}" (npc_id=${npcId}, type=${type})`,
+        npcId: chosenId,
+        message: `Created "${name}" (${type}).${spawnMessage}`,
       },
       { status: 201 },
     );
   } catch (err: any) {
     if (err.code === "ER_DUP_ENTRY") {
       return NextResponse.json(
-        { error: "An NPC with this npc_id already exists. Use PUT to update it." },
+        { error: "An NPC with this npc_id already exists. Use PUT to update it, or pick a different NPC appearance." },
         { status: 409 },
       );
     }
@@ -97,22 +168,22 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - update an existing custom NPC by npc_id
+// PUT - update an existing custom NPC by name
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { npcId } = body;
+    const { name, npcId } = body;
 
-    if (!npcId) {
-      return NextResponse.json({ error: "npcId is required" }, { status: 400 });
+    if (!name && !npcId) {
+      return NextResponse.json({ error: "name or npcId is required" }, { status: 400 });
     }
 
     const sets: string[] = [];
     const params: any[] = [];
 
-    if (body.name !== undefined) {
+    if (body.newName !== undefined) {
       sets.push("name = ?");
-      params.push(body.name);
+      params.push(body.newName);
     }
     if (body.type !== undefined) {
       const validTypes = ["exchange", "dialogue", "teleporter"];
@@ -126,8 +197,21 @@ export async function PUT(request: NextRequest) {
       params.push(body.type);
     }
     if (body.config !== undefined) {
+      const configObj = typeof body.config === "string" ? JSON.parse(body.config) : body.config;
+      // Normalize price keys
+      if (configObj.items) {
+        for (const item of configObj.items) {
+          if (item.cost !== undefined && item.price === undefined) {
+            item.price = item.cost;
+            delete item.cost;
+          }
+        }
+      }
+      if (!configObj.currency_name && configObj.currency === "votepoints") {
+        configObj.currency_name = "Vote Points";
+      }
       sets.push("config = ?");
-      params.push(typeof body.config === "string" ? body.config : JSON.stringify(body.config));
+      params.push(JSON.stringify(configObj));
     }
     if (body.enabled !== undefined) {
       sets.push("enabled = ?");
@@ -138,19 +222,30 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
-    params.push(npcId);
-    const result = await execute(
-      `UPDATE gm_npcs SET ${sets.join(", ")} WHERE npc_id = ?`,
-      params,
-    );
-
-    if (result.affectedRows === 0) {
-      return NextResponse.json({ error: "Custom NPC not found" }, { status: 404 });
+    // Look up by name or npcId
+    if (name) {
+      params.push(name);
+      const result = await execute(
+        `UPDATE gm_npcs SET ${sets.join(", ")} WHERE name = ?`,
+        params,
+      );
+      if (result.affectedRows === 0) {
+        return NextResponse.json({ error: `Custom NPC "${name}" not found` }, { status: 404 });
+      }
+    } else {
+      params.push(npcId);
+      const result = await execute(
+        `UPDATE gm_npcs SET ${sets.join(", ")} WHERE npc_id = ?`,
+        params,
+      );
+      if (result.affectedRows === 0) {
+        return NextResponse.json({ error: "Custom NPC not found" }, { status: 404 });
+      }
     }
 
     return NextResponse.json({
       success: true,
-      message: `Updated custom NPC (npc_id=${npcId})`,
+      message: `Updated custom NPC "${body.newName || name || npcId}"`,
     });
   } catch (err: any) {
     return NextResponse.json(
@@ -160,21 +255,38 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE - remove a custom NPC by npc_id
+// DELETE - remove a custom NPC by name + its plife spawn
 export async function DELETE(request: NextRequest) {
   try {
-    const { npcId } = await request.json();
+    const { name, npcId: directNpcId } = await request.json();
 
-    if (!npcId) {
-      return NextResponse.json({ error: "npcId is required" }, { status: 400 });
+    if (!name && !directNpcId) {
+      return NextResponse.json({ error: "name or npcId is required" }, { status: 400 });
     }
 
-    const result = await execute("DELETE FROM gm_npcs WHERE npc_id = ?", [npcId]);
+    let npcIdToDelete = directNpcId;
+
+    if (name) {
+      // Look up npc_id by name so we can also delete the plife spawn
+      const rows = await query<GmNpc>("SELECT npc_id FROM gm_npcs WHERE name = ?", [name]);
+      if (rows.length === 0) {
+        return NextResponse.json({ error: `Custom NPC "${name}" not found` }, { status: 404 });
+      }
+      npcIdToDelete = rows[0].npc_id;
+    }
+
+    // Delete gm_npcs entry
+    await execute("DELETE FROM gm_npcs WHERE npc_id = ?", [npcIdToDelete]);
+
+    // Also delete plife spawn
+    const plifeResult = await execute(
+      "DELETE FROM plife WHERE life = ? AND type = 'n' AND world = 0",
+      [npcIdToDelete],
+    );
 
     return NextResponse.json({
       success: true,
-      message: `Deleted custom NPC (npc_id=${npcId})`,
-      affectedRows: result.affectedRows,
+      message: `Deleted NPC "${name || npcIdToDelete}" and ${plifeResult.affectedRows} map spawn(s)`,
     });
   } catch (err: any) {
     return NextResponse.json(
