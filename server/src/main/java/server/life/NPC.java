@@ -44,9 +44,6 @@ public class NPC extends AbstractLoadedLife {
 
     @Override
     public void sendSpawnData(Client client) {
-        if (client.getPlayer() != null) {
-            org.slf4j.LoggerFactory.getLogger(NPC.class).info("sendSpawnData NPC {} ({}) to {} on map {} pos=({},{}) fh={}", getName(), getId(), client.getPlayer().getName(), client.getPlayer().getMapId(), getPosition().x, getPosition().y, getFh());
-        }
         client.sendPacket(PacketCreator.spawnNPC(this));
         client.sendPacket(PacketCreator.spawnNPCRequestController(this, true));
     }
