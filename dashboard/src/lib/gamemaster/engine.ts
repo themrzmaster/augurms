@@ -962,7 +962,7 @@ Types:
           type: { type: "string", enum: ["exchange", "dialogue", "teleporter"], description: "NPC behavior type" },
           config: {
             type: "object",
-            description: `Type-specific config. Examples:
+            description: `Type-specific config. Item prices MUST use "price" key (not "cost"). Always include "currency_name". Examples:
 exchange: {"currency":"votepoints","currency_name":"Vote Points","greeting":"Welcome!","items":[{"itemId":2049100,"price":3,"quantity":1}]}
 dialogue: {"pages":["Page 1 text","Page 2 text"]}
 teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"Henesys","cost":0}]}`,

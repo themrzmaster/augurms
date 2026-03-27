@@ -19,9 +19,6 @@ import tools.DatabaseConnection;
 import tools.PacketCreator;
 
 import java.awt.Point;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;

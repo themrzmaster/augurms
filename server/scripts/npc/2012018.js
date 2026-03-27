@@ -1,6 +1,6 @@
 /*
- * NPC 9200000 - Cody (Wizet Wizard)
- * Universal custom NPC script — reads behavior from gm_npcs table.
+ * NPC 2012018 - Ericsson
+ * Custom NPC script — reads behavior from gm_npcs table.
  * Supports types: exchange (currency shop), dialogue, teleporter.
  */
 var DatabaseConnection = Java.type("tools.DatabaseConnection");
@@ -43,7 +43,9 @@ function getCurrencyBalance() {
 }
 
 function getCurrencyName() {
-  return npcConfig.currency_name || "Meso";
+  if (npcConfig.currency_name) return npcConfig.currency_name;
+  if (npcConfig.currency === "votepoints") return "Vote Points";
+  return "Meso";
 }
 
 function deductCurrency(amount) {
@@ -124,7 +126,8 @@ function handleExchange(mode, type, selection) {
       var item = items[i];
       var qty = item.quantity || 1;
       var qtyStr = qty > 1 ? (qty + "x ") : "";
-      text += "#L" + i + "# " + qtyStr + "#t" + item.itemId + "# - #r" + item.price + "#k " + currName + "#l\r\n";
+      var itemPrice = item.price || item.cost || 0;
+      text += "#L" + i + "# " + qtyStr + "#t" + item.itemId + "# - #r" + itemPrice + "#k " + currName + "#l\r\n";
     }
     cm.sendSimple(text);
   } else if (status == 1) {
@@ -133,11 +136,12 @@ function handleExchange(mode, type, selection) {
     var item = items[selection];
     var qty = item.quantity || 1;
     var qtyStr = qty > 1 ? (qty + "x ") : "";
-    cm.sendYesNo("Buy " + qtyStr + "#t" + item.itemId + "# for #r" + item.price + "#k " + currName + "?");
+    var itemPrice = item.price || item.cost || 0;
+    cm.sendYesNo("Buy " + qtyStr + "#t" + item.itemId + "# for #r" + itemPrice + "#k " + currName + "?");
   } else if (status == 2) {
     var item = items[selectedItem];
     var qty = item.quantity || 1;
-    var price = item.price;
+    var price = item.price || item.cost || 0;
     if (getCurrencyBalance() < price) {
       cm.sendOk("You don't have enough " + currName + "! You need #r" + price + "#k.");
       cm.dispose(); return;
