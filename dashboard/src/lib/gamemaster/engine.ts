@@ -1757,15 +1757,13 @@ You can create database-driven NPCs that players can interact with. These are po
 ### Key Rules
 - The \`npcId\` determines the NPC's visual appearance (sprite) AND must be an interactive NPC in the client.
 - **IMPORTANT: NPC 9010000 (Maple Administrator) is NOT interactive** — the client shows a speech bubble but never sends a talk request to the server. Do NOT use it.
-- **Safe interactive NPC IDs for custom NPCs:**
-  - 9200000 (Cody - Wizet Wizard) — currently used for Vote Sage
-  - 9000000 (Maple Leaf Admin)
-  - 9201023 (Kiru)
-  - 9030000 (Fredrick)
-  - 1012100 (Mia)
-  - 2042000 (Teo)
-  - 9201000 (Moony)
-  - 9201001 (Ellie)
+- **Safe interactive NPC IDs for custom NPCs** (tested and confirmed to send talk packets to the server):
+  - 2012018 (Ericsson) — currently used for Vote Sage in Henesys
+- **DO NOT use these NPC IDs** — they are non-interactive (client shows speech bubble only, no server packet):
+  - 9010000 (Maple Administrator) — BROKEN, never use
+  - 9200000 (Cody) — BROKEN, never use
+  - Any NPC already placed on a map in the WZ data may be non-interactive
+- When creating new custom NPCs, prefer NPC IDs that are NOT already on the target map's WZ data. Use \`search_maps\` to check what NPCs exist on a map before placing.
 - Each \`npcId\` can only have one config. To create multiple custom NPCs, use different NPC IDs from the list above.
 - Use \`list_custom_npcs\` to see what you've already created before making new ones.
 - After creating a custom NPC, you MUST spawn it on a map with \`add_map_spawn\` — the NPC won't appear until placed.
