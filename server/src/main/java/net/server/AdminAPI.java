@@ -16,6 +16,7 @@ import server.life.NPC;
 import server.maps.MapleMap;
 
 import tools.DatabaseConnection;
+import tools.PacketCreator;
 
 import java.awt.Point;
 import java.sql.Connection;
