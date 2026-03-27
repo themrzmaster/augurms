@@ -717,15 +717,16 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "add_map_spawn",
-      description: "Add a mob or NPC spawn to a map. The spawn is written to the plife table and takes effect on server restart. Use get_map first to find valid x,y coordinates from existing spawns.",
+      description: "Add a mob or NPC spawn to a map. Written to plife DB table, takes effect on server restart. IMPORTANT: You MUST provide the correct foothold (fh) value — use get_map to find existing spawns and copy the fh from a nearby spawn at similar x,y coordinates. An fh of 0 makes NPCs non-interactive.",
       parameters: {
         type: "object",
         properties: {
           mapId: { type: "number", description: "Map ID" },
           type: { type: "string", enum: ["m", "n"], description: "'m' for mob, 'n' for NPC" },
           lifeId: { type: "number", description: "Mob or NPC ID to spawn" },
-          x: { type: "number", description: "X coordinate (use coords from existing spawns via get_map)" },
-          y: { type: "number", description: "Y coordinate" },
+          x: { type: "number", description: "X coordinate (copy from a nearby spawn via get_map)" },
+          y: { type: "number", description: "Y coordinate (copy from a nearby spawn via get_map)" },
+          fh: { type: "number", description: "Foothold ID (REQUIRED for NPCs — copy from a nearby spawn via get_map. fh=0 makes NPCs non-clickable)" },
         },
         required: ["mapId", "type", "lifeId", "x", "y"],
       },
