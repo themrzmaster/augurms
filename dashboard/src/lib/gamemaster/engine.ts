@@ -1961,9 +1961,12 @@ async function postDiscordUpdate(session: GMSession): Promise<void> {
     return detail ? `${emoji} **${label}** — ${detail}` : `${emoji} **${label}**`;
   });
 
+  // Discord embed description limit is 4096 chars
+  const description = (session.summary || "The Game Master made changes to the world.").slice(0, 4000);
+
   const embed = {
     title: "\u2728 The Augur has spoken",
-    description: session.summary || "The Game Master made changes to the world.",
+    description,
     color: 0xf5c542,
     fields: actionLines.length > 0
       ? [{ name: `Changes (${actions.length})`, value: actionLines.join("\n").slice(0, 1024) }]
@@ -1972,11 +1975,15 @@ async function postDiscordUpdate(session: GMSession): Promise<void> {
     footer: { text: "AugurMS Game Master" },
   };
 
-  await fetch(webhookUrl, {
+  const res = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ embeds: [embed] }),
   });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Discord webhook returned ${res.status}: ${body.slice(0, 200)}`);
+  }
 }
 
 async function persistAction(

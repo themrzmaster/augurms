@@ -300,6 +300,19 @@ ipcMain.handle("launcher:checkUpdates", async () => {
 ipcMain.handle("launcher:downloadUpdates", async (_, updates) => {
   if (!gamePath || !updates?.length) return { success: false };
 
+  // Pre-check: ensure target directory exists and is writable
+  try {
+    fs.mkdirSync(gamePath, { recursive: true });
+    const testFile = path.join(gamePath, ".augur-write-test");
+    fs.writeFileSync(testFile, "test");
+    fs.unlinkSync(testFile);
+  } catch (err) {
+    return {
+      success: false,
+      error: `Cannot write to game folder: ${gamePath}\n\n${err.message}\n\nTry choosing a different folder (e.g. C:\\AugurMS), or run the launcher as Administrator.`,
+    };
+  }
+
   for (let i = 0; i < updates.length; i++) {
     const file = updates[i];
     const destPath = path.join(gamePath, file.name);
@@ -361,6 +374,11 @@ ipcMain.handle("launcher:downloadUpdates", async (_, updates) => {
         // Brief backoff before retry
         await new Promise(r => setTimeout(r, 1000 * attempt));
       }
+    }
+
+    // Defensive: if we somehow exit retries without success or early return
+    if (!success) {
+      return { success: false, error: `Failed to download ${file.name} after ${MAX_RETRIES} retries` };
     }
   }
 
