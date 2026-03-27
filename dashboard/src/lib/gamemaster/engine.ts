@@ -1306,6 +1306,32 @@ async function buildHistoricalContext(): Promise<string> {
     }
   } catch { /* no snapshots yet */ }
 
+  // Custom NPCs — the GM's own creations
+  try {
+    const customNpcs = await dbQuery(
+      "SELECT g.npc_id, g.name, g.type, g.config, g.enabled, p.map, p.x, p.y FROM gm_npcs g LEFT JOIN plife p ON p.life = g.npc_id AND p.type = 'n' AND p.world = 0"
+    );
+    if ((customNpcs as any[]).length > 0) {
+      context += "\n\n## Your Custom NPCs\n";
+      context += "These are NPCs you created. Use `update_custom_npc` to modify or `delete_custom_npc` to remove.\n";
+      for (const npc of customNpcs as any[]) {
+        const cfg = typeof npc.config === "string" ? JSON.parse(npc.config) : npc.config;
+        const status = npc.enabled ? "active" : "DISABLED";
+        const location = npc.map ? `map ${npc.map} at (${npc.x}, ${npc.y})` : "not spawned";
+        context += `\n- **${npc.name}** (${npc.type}, ${status}) — ${location}\n`;
+        if (npc.type === "exchange" && cfg.items) {
+          context += `  Currency: ${cfg.currency_name || cfg.currency || "meso"} | Items: ${cfg.items.map((i: any) => `#${i.itemId} @${i.price || i.cost}`).join(", ")}\n`;
+        } else if (npc.type === "dialogue" && cfg.pages) {
+          context += `  Pages: ${cfg.pages.length}\n`;
+        } else if (npc.type === "teleporter" && cfg.destinations) {
+          context += `  Destinations: ${cfg.destinations.map((d: any) => d.name).join(", ")}\n`;
+        }
+      }
+    } else {
+      context += "\n\n## Your Custom NPCs\nNone created yet. Use `create_custom_npc` to add shops, lore NPCs, or teleporters.\n";
+    }
+  } catch { /* gm_npcs table may not exist */ }
+
   // Active events — what's currently running in the game
   try {
     const customSpawns = await dbQuery(
