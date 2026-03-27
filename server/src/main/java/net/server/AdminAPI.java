@@ -11,6 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import server.ItemInformationProvider;
 import server.TimerManager;
+import server.life.LifeFactory;
+import server.life.NPC;
 import server.maps.MapleMap;
 
 import tools.DatabaseConnection;
@@ -291,7 +293,7 @@ public class AdminAPI {
         for (var ch : world.getChannels()) {
             try {
                 MapleMap map = ch.getMapFactory().getMap(mapId);
-                server.life.NPC npc = server.life.LifeFactory.getNPC(npcId);
+                NPC npc = LifeFactory.getNPC(npcId);
                 if (npc == null) continue;
                 npc.setPosition(new Point(x, y));
                 npc.setCy(y);
@@ -299,7 +301,7 @@ public class AdminAPI {
                 npc.setRx1(x + 50);
                 npc.setFh(fh);
                 map.addMapObject(npc);
-                map.broadcastMessage(tools.PacketCreator.spawnNPC(npc));
+                map.broadcastMessage(PacketCreator.spawnNPC(npc));
                 log.info("Spawned custom NPC {} on map {} ch{} at ({},{})", npcId, mapId, ch.getId(), x, y);
             } catch (Exception e) {
                 log.warn("Failed to spawn NPC {} on map {} ch{}", npcId, mapId, ch.getId(), e);
