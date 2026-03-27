@@ -1755,9 +1755,20 @@ You can create database-driven NPCs that players can interact with. These are po
 - **teleporter** — Warp menu with optional meso cost per destination.
 
 ### Key Rules
-- The \`npcId\` determines the NPC's visual appearance (sprite). Use any existing NPC ID from the game (e.g. 9010000). You can search for NPCs to find good models.
-- Each \`npcId\` can only have one config. To create multiple custom NPCs, use different NPC IDs.
+- The \`npcId\` determines the NPC's visual appearance (sprite) AND must be an interactive NPC in the client.
+- **IMPORTANT: NPC 9010000 (Maple Administrator) is NOT interactive** — the client shows a speech bubble but never sends a talk request to the server. Do NOT use it.
+- **Safe interactive NPC IDs for custom NPCs:**
+  - 9200000 (Cody - Wizet Wizard) — currently used for Vote Sage
+  - 9000000 (Maple Leaf Admin)
+  - 9201023 (Kiru)
+  - 9030000 (Fredrick)
+  - 1012100 (Mia)
+  - 2042000 (Teo)
+  - 9201000 (Moony)
+  - 9201001 (Ellie)
+- Each \`npcId\` can only have one config. To create multiple custom NPCs, use different NPC IDs from the list above.
 - Use \`list_custom_npcs\` to see what you've already created before making new ones.
+- After creating a custom NPC, you MUST spawn it on a map with \`add_map_spawn\` — the NPC won't appear until placed.
 - Vote point shops are especially valuable — they reward players who vote and give them something to spend points on.
 
 ### Use Cases
