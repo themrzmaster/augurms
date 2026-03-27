@@ -1135,7 +1135,7 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
     type: "function",
     function: {
       name: "set_server_message",
-      description: "Set the server announcement shown to players on the channel select screen. Updates both server_message and event_message in config. Note: requires server restart to appear in-game. Must be pure ASCII (no emoji/unicode — the server YAML parser crashes on non-ASCII).",
+      description: "Set the scrolling server announcement shown on the channel select screen. Takes effect immediately (live push to game server). Must be pure ASCII (no emoji/unicode).",
       parameters: {
         type: "object",
         properties: { message: { type: "string", description: "Announcement text (ASCII only, no emoji)" } },

@@ -36,6 +36,7 @@ function loadConfig() {
     }
     return false;
   } catch (e) {
+    java.lang.System.out.println("[9900100] loadConfig error for npc " + cm.getNpc() + ": " + e);
     return false;
   } finally {
     if (rs != null) try { rs.close(); } catch (e2) {}
@@ -122,11 +123,14 @@ function deductVotePoints(amount) {
 
 function start() {
   status = -1;
+  java.lang.System.out.println("[9900100] start() called for npc " + cm.getNpc());
   if (!loadConfig()) {
+    java.lang.System.out.println("[9900100] loadConfig() returned false for npc " + cm.getNpc());
     cm.sendOk("This NPC is not available right now. Check back later!");
     cm.dispose();
     return;
   }
+  java.lang.System.out.println("[9900100] loadConfig() success: type=" + npcType + " name=" + npcName);
   action(1, 0, 0);
 }
 

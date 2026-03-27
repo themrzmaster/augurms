@@ -1,41 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFileSync, writeFileSync } from "fs";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { PATHS } from "@/lib/cosmic";
+
+const GAME_API = process.env.GAME_API_URL || "http://augur-ms-game.internal:8585";
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, world = 0 } = await request.json();
+    const { message } = await request.json();
 
     if (!message || typeof message !== "string") {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    // Update the server_message in config.yaml for the specified world
-    const configContent = readFileSync(PATHS.config, "utf-8");
-    const config = parseYaml(configContent);
+    // Push to game server live via Admin API
+    const res = await fetch(`${GAME_API}/message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+      signal: AbortSignal.timeout(5000),
+    });
 
-    if (!config.worlds || !config.worlds[world]) {
-      return NextResponse.json({ error: `World ${world} not found` }, { status: 404 });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return NextResponse.json({
+        success: false,
+        error: "Game server rejected message update",
+        details: err,
+      }, { status: 502 });
     }
-
-    const previousMessage = config.worlds[world].server_message;
-    config.worlds[world].server_message = message;
-    config.worlds[world].event_message = message;
-
-    writeFileSync(PATHS.config, stringifyYaml(config, { lineWidth: 0 }), "utf-8");
 
     return NextResponse.json({
       success: true,
-      message: `Server message updated for world ${world}`,
-      previousMessage,
+      message: "Server message updated live",
       newMessage: message,
-      note: "Server restart required for message to take effect in-game. Players see this on channel select.",
     });
   } catch (err: any) {
     return NextResponse.json(
       { error: "Failed to update announcement", details: err.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

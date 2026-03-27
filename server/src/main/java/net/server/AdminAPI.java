@@ -40,6 +40,7 @@ public class AdminAPI {
             server.createContext("/rates", this::handleRates);
             server.createContext("/status", this::handleStatus);
             server.createContext("/drop", this::handleDrop);
+            server.createContext("/message", this::handleMessage);
             server.setExecutor(null);
             server.start();
             log.info("Admin API started on port {}", PORT);
@@ -227,6 +228,31 @@ public class AdminAPI {
             "{\"success\":true,\"itemId\":%d,\"quantity\":%d,\"mapId\":%d,\"x\":%d,\"y\":%d}",
             itemId, quantity, map.getId(), dropPos.x, dropPos.y
         ));
+    }
+
+    private void handleMessage(HttpExchange ex) throws IOException {
+        if (!"POST".equals(ex.getRequestMethod())) {
+            respond(ex, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        String message = extractString(body, "message");
+
+        if (message == null || message.isEmpty()) {
+            respond(ex, 400, "{\"error\":\"message is required\"}");
+            return;
+        }
+
+        World world = Server.getInstance().getWorld(0);
+        if (world == null) {
+            respond(ex, 500, "{\"error\":\"World 0 not found\"}");
+            return;
+        }
+
+        world.setServerMessage(message);
+        log.info("Admin API: Server message updated — {}", message);
+        respond(ex, 200, String.format("{\"success\":true,\"message\":\"%s\"}", message.replace("\"", "\\\"")));
     }
 
     private void loadRatesFromDb() {

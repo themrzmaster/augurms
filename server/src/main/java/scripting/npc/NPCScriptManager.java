@@ -223,9 +223,12 @@ public class NPCScriptManager extends AbstractScriptManager {
                      "SELECT 1 FROM gm_npcs WHERE npc_id = ? AND enabled = 1")) {
             ps.setInt(1, npcId);
             try (java.sql.ResultSet rs = ps.executeQuery()) {
-                return rs.next();
+                boolean found = rs.next();
+                log.info("isGmNpc({}) = {}", npcId, found);
+                return found;
             }
         } catch (Exception e) {
+            log.warn("isGmNpc({}) failed: {}", npcId, e.getMessage());
             return false;
         }
     }
