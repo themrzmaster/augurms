@@ -101,4 +101,8 @@
         <sqlFile path="db/tables/024-duey.sql"/>
     </changeSet>
 
+    <changeSet id="25" author="AugurMS">
+        <sqlFile path="db/tables/025-killlog.sql"/>
+    </changeSet>
+
 </databaseChangeLog>

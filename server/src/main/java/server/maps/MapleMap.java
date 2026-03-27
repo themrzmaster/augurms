@@ -70,6 +70,7 @@ import server.life.SpawnPoint;
 import server.partyquest.CarnivalFactory;
 import server.partyquest.CarnivalFactory.MCSkill;
 import server.partyquest.GuardianSpawnPoint;
+import tools.DatabaseConnection;
 import tools.PacketCreator;
 import tools.Pair;
 import tools.Randomizer;
@@ -1419,6 +1420,22 @@ public class MapleMap {
             }
 
             Character dropOwner = monster.killBy(chr);
+
+            if (monster.isBoss() && chr != null) {
+                try (java.sql.Connection con = DatabaseConnection.getConnection();
+                     java.sql.PreparedStatement ps = con.prepareStatement(
+                             "INSERT INTO killlog (characterid, charactername, mobid, mobname, mapid) VALUES (?, ?, ?, ?, ?)")) {
+                    ps.setInt(1, chr.getId());
+                    ps.setString(2, chr.getName());
+                    ps.setInt(3, monster.getId());
+                    ps.setString(4, monster.getName());
+                    ps.setInt(5, this.getId());
+                    ps.executeUpdate();
+                } catch (java.sql.SQLException e) {
+                    log.warn("Failed to log boss kill", e);
+                }
+            }
+
             if (withDrops && !monster.dropsDisabled()) {
                 if (dropOwner == null) {
                     dropOwner = chr;

@@ -112,13 +112,13 @@ export async function GET(request: NextRequest) {
         "SELECT map, COUNT(*) as count FROM characters GROUP BY map ORDER BY count DESC LIMIT 20"
       );
 
-      // Boss kills today
+      // Boss kills today (from killlog — logs all boss mob kills)
       const bossKillsDaily = await query<{ bosstype: string; kills: number }>(
-        "SELECT bosstype, COUNT(*) as kills FROM bosslog_daily WHERE DATE(attempttime) = CURDATE() GROUP BY bosstype"
+        "SELECT mobname as bosstype, COUNT(*) as kills FROM killlog WHERE DATE(killedtime) = CURDATE() GROUP BY mobname"
       ).catch(() => []);
 
       const bossKillsWeekly = await query<{ bosstype: string; kills: number }>(
-        "SELECT bosstype, COUNT(*) as kills FROM bosslog_weekly WHERE YEARWEEK(attempttime) = YEARWEEK(NOW()) GROUP BY bosstype"
+        "SELECT mobname as bosstype, COUNT(*) as kills FROM killlog WHERE killedtime > DATE_SUB(NOW(), INTERVAL 7 DAY) GROUP BY mobname"
       ).catch(() => []);
 
       // Character count by GM level

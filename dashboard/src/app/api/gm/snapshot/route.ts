@@ -55,7 +55,7 @@ export async function POST() {
     ).catch(() => [{ count: 0 }]);
 
     const bossKillsDaily = await query<{ kills: number }>(
-      "SELECT COUNT(*) as kills FROM bosslog_daily WHERE DATE(attempttime) = CURDATE()"
+      "SELECT COUNT(*) as kills FROM killlog WHERE DATE(killedtime) = CURDATE()"
     ).catch(() => [{ kills: 0 }]);
 
     // Active player metrics
