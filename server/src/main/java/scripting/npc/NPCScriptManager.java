@@ -131,13 +131,16 @@ public class NPCScriptManager extends AbstractScriptManager {
                 }
                 if (engine == null) {
                     engine = getInvocableScriptEngine("npc/" + npc + ".js", c);
+                    log.info("NPCScript: npc/{}.js engine={}", npc, engine != null ? "loaded" : "null");
                     cm.resetItemScript();
                 }
                 if (engine == null && isGmNpc(npc)) {
                     engine = getInvocableScriptEngine("npc/9900100.js", c);
+                    log.info("NPCScript: fallback 9900100.js engine={}", engine != null ? "loaded" : "null");
                     cm.resetItemScript();
                 }
                 if (engine == null) {
+                    log.warn("NPCScript: no script found for npc {}", npc);
                     dispose(c);
                     return false;
                 }

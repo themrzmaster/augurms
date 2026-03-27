@@ -94,12 +94,15 @@ function deductVotePoints(amount) {
 }
 
 function start() {
+  java.lang.System.out.println("[2012018] start() called, npcId=" + cm.getNpc());
   status = -1;
   if (!loadConfig()) {
+    java.lang.System.out.println("[2012018] loadConfig FAILED for npcId=" + cm.getNpc());
     cm.sendOk("This NPC is not configured yet. Check back later!");
     cm.dispose();
     return;
   }
+  java.lang.System.out.println("[2012018] loadConfig OK: type=" + npcType + " name=" + npcName);
   action(1, 0, 0);
 }
 

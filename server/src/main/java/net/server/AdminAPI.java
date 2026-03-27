@@ -49,7 +49,6 @@ public class AdminAPI {
             server.start();
             log.info("Admin API started on port {}", PORT);
             loadRatesFromDb();
-            spawnCustomNpcs();
         } catch (IOException e) {
             log.error("Failed to start Admin API", e);
         }
@@ -258,31 +257,6 @@ public class AdminAPI {
         world.setServerMessage(message);
         log.info("Admin API: Server message updated — {}", message);
         respond(ex, 200, String.format("{\"success\":true,\"message\":\"%s\"}", message.replace("\"", "\\\"")));
-    }
-
-    /**
-     * On startup, spawn custom NPCs from gm_npcs + plife tables using the same
-     * method as !npc command (broadcastMessage spawnNPC) so they are interactive.
-     */
-    private void spawnCustomNpcs() {
-        try (Connection con = DatabaseConnection.getConnection();
-             PreparedStatement ps = con.prepareStatement(
-                     "SELECT p.map, p.life, p.x, p.y, p.fh FROM plife p " +
-                     "INNER JOIN gm_npcs g ON g.npc_id = p.life AND g.enabled = 1 " +
-                     "WHERE p.type = 'n' AND p.world = 0")) {
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    int mapId = rs.getInt("map");
-                    int npcId = rs.getInt("life");
-                    int x = rs.getInt("x");
-                    int y = rs.getInt("y");
-                    int fh = rs.getInt("fh");
-                    spawnNpcOnMap(mapId, npcId, x, y, fh);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to spawn custom NPCs", e);
-        }
     }
 
     private void spawnNpcOnMap(int mapId, int npcId, int x, int y, int fh) {
