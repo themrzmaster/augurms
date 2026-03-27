@@ -16,6 +16,9 @@ import server.maps.MapleMap;
 import tools.DatabaseConnection;
 
 import java.awt.Point;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -41,10 +44,12 @@ public class AdminAPI {
             server.createContext("/status", this::handleStatus);
             server.createContext("/drop", this::handleDrop);
             server.createContext("/message", this::handleMessage);
+            server.createContext("/npc", this::handleNpcSpawn);
             server.setExecutor(null);
             server.start();
             log.info("Admin API started on port {}", PORT);
             loadRatesFromDb();
+            spawnCustomNpcs();
         } catch (IOException e) {
             log.error("Failed to start Admin API", e);
         }
@@ -253,6 +258,73 @@ public class AdminAPI {
         world.setServerMessage(message);
         log.info("Admin API: Server message updated — {}", message);
         respond(ex, 200, String.format("{\"success\":true,\"message\":\"%s\"}", message.replace("\"", "\\\"")));
+    }
+
+    /**
+     * On startup, spawn custom NPCs from gm_npcs + plife tables using the same
+     * method as !npc command (broadcastMessage spawnNPC) so they are interactive.
+     */
+    private void spawnCustomNpcs() {
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "SELECT p.map, p.life, p.x, p.y, p.fh FROM plife p " +
+                     "INNER JOIN gm_npcs g ON g.npc_id = p.life AND g.enabled = 1 " +
+                     "WHERE p.type = 'n' AND p.world = 0")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int mapId = rs.getInt("map");
+                    int npcId = rs.getInt("life");
+                    int x = rs.getInt("x");
+                    int y = rs.getInt("y");
+                    int fh = rs.getInt("fh");
+                    spawnNpcOnMap(mapId, npcId, x, y, fh);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to spawn custom NPCs", e);
+        }
+    }
+
+    private void spawnNpcOnMap(int mapId, int npcId, int x, int y, int fh) {
+        World world = Server.getInstance().getWorld(0);
+        if (world == null) return;
+        for (var ch : world.getChannels()) {
+            try {
+                MapleMap map = ch.getMapFactory().getMap(mapId);
+                server.life.NPC npc = server.life.LifeFactory.getNPC(npcId);
+                if (npc == null) continue;
+                npc.setPosition(new Point(x, y));
+                npc.setCy(y);
+                npc.setRx0(x - 50);
+                npc.setRx1(x + 50);
+                npc.setFh(fh);
+                map.addMapObject(npc);
+                map.broadcastMessage(tools.PacketCreator.spawnNPC(npc));
+                log.info("Spawned custom NPC {} on map {} ch{} at ({},{})", npcId, mapId, ch.getId(), x, y);
+            } catch (Exception e) {
+                log.warn("Failed to spawn NPC {} on map {} ch{}", npcId, mapId, ch.getId(), e);
+            }
+        }
+    }
+
+    private void handleNpcSpawn(HttpExchange ex) throws IOException {
+        if (!"POST".equals(ex.getRequestMethod())) {
+            respond(ex, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+        String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        Integer npcId = extractInt(body, "npcId");
+        Integer mapId = extractInt(body, "mapId");
+        Integer x = extractInt(body, "x");
+        Integer y = extractInt(body, "y");
+        Integer fh = extractInt(body, "fh");
+
+        if (npcId == null || mapId == null || x == null || y == null) {
+            respond(ex, 400, "{\"error\":\"npcId, mapId, x, y are required\"}");
+            return;
+        }
+        spawnNpcOnMap(mapId, npcId, x, y, fh != null ? fh : 0);
+        respond(ex, 200, String.format("{\"success\":true,\"npcId\":%d,\"mapId\":%d}", npcId, mapId));
     }
 
     private void loadRatesFromDb() {
