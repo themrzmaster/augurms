@@ -52,6 +52,7 @@ import client.command.commands.gm0.UptimeCommand;
 import client.command.commands.gm0.WhatDropsFromCommand;
 import client.command.commands.gm0.WhoDropsCommand;
 import client.command.commands.gm0.FeedbackCommand;
+import client.command.commands.gm0.WorldChatCommand;
 import client.command.commands.gm1.BossHpCommand;
 import client.command.commands.gm1.BuffMeCommand;
 import client.command.commands.gm1.GotoCommand;
@@ -371,6 +372,7 @@ public class CommandsExecutor {
         addCommand("whatdropsfrom", WhatDropsFromCommand.class);
         addCommand("whodrops", WhoDropsCommand.class);
         addCommand("feedback", FeedbackCommand.class);
+        addCommand(new String[]{"world", "w"}, WorldChatCommand.class);
 
         commandsNameDesc.add(levelCommandsCursor);
     }

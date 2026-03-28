@@ -252,6 +252,15 @@ ipcMain.handle("launcher:checkUpdates", async () => {
     hdMode = config.hdMode || false;
   } catch {}
 
+  // Proactively clean up HD files when HD mode is off — prevents crashes
+  // if user manually placed files or launched the exe directly
+  if (!hdMode) {
+    for (const name of HD_FILES) {
+      const filePath = path.join(gamePath, name);
+      try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch {}
+    }
+  }
+
   try {
     const manifest = await fetchJSON(MANIFEST_URL);
     if (!manifest || !manifest.files) return { status: "error", error: "Invalid manifest" };
