@@ -59,9 +59,9 @@ public final class ChangeMapSpecialHandler extends AbstractPacketHandler {
         }
 
         // No portal found - check if this is an NPC with a WZ script field.
-        // In v83, NPCs like the Door of Dimension (1061009) have info/script
-        // entries that cause the client to send CHANGE_MAP_SPECIAL instead of
-        // NPC_TALK when the player presses UP near them.
+        // In v83, some NPCs have info/script entries that cause the client to
+        // send CHANGE_MAP_SPECIAL instead of NPC_TALK when the player presses
+        // UP near them. Fall through to start the nearest NPC's script.
         for (MapObject obj : c.getPlayer().getMap().getMapObjectsInRange(c.getPlayer().getPosition(), 400000.0, List.of(MapObjectType.NPC))) {
             if (obj instanceof NPC npc) {
                 if (NPCScriptManager.getInstance().start(c, npc.getId(), obj.getObjectId(), null)) {
