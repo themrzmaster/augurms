@@ -59,21 +59,50 @@ function canEnterDimensionMap(mapid, jobid) {
     return false;
 }
 
+function getDimensionMapForJob(jobid) {
+    var niche = parseInt(jobid / 100) % 10;
+    if (niche == 1) return "105070001 - #m105070001#";
+    if (niche == 2) return "100040106 - #m100040106#";
+    if (niche == 3) return "105040305 - #m105040305#";
+    if (niche == 4) return "107000402 - #m107000402#";
+    if (niche == 5) return "105070200 - #m105070200#";
+    return null;
+}
+
 function start() {
-    if (canEnterDimensionMap(cm.getMapId(), cm.getJob().getId()) && cm.getPlayer().gotPartyQuestItem("JBP") && !cm.haveItem(4031059)) {
-        var js = jobString(cm.getPlayer().getJob().getJobNiche());
-
-        var em = cm.getEventManager("3rdJob_" + js);
-        if (em == null) {
-            cm.sendOk("Sorry, but 3rd job advancement (" + js + ") is closed.");
+    if (!canEnterDimensionMap(cm.getMapId(), cm.getJob().getId())) {
+        var correctMap = getDimensionMapForJob(cm.getJob().getId());
+        if (correctMap != null) {
+            cm.sendOk("This is not the right Door of Dimension for your class. You need to find yours at #b" + correctMap + "#k.");
         } else {
-            if (!em.startInstance(cm.getPlayer())) {
-                cm.sendOk("Someone else is already challenging the clone. Please wait until the area is cleared.");
-            }
-
-            cm.dispose();
-            return;
+            cm.sendOk("Only 2nd job adventurers who have been sent here by their job instructor may enter.");
         }
+        cm.dispose();
+        return;
+    }
+
+    if (!cm.getPlayer().gotPartyQuestItem("JBP")) {
+        cm.sendOk("You are not ready to enter yet. Please speak with your #bjob instructor#k first to receive permission to challenge the dimensional crack.");
+        cm.dispose();
+        return;
+    }
+
+    if (cm.haveItem(4031059)) {
+        cm.sendOk("You already hold the #b#t4031059##k. Please bring it back to your #bjob instructor#k to continue.");
+        cm.dispose();
+        return;
+    }
+
+    var js = jobString(cm.getPlayer().getJob().getJobNiche());
+    var em = cm.getEventManager("3rdJob_" + js);
+    if (em == null) {
+        cm.sendOk("Sorry, but 3rd job advancement (" + js + ") is closed.");
+        cm.dispose();
+        return;
+    }
+
+    if (!em.startInstance(cm.getPlayer())) {
+        cm.sendOk("Someone else is already challenging the clone. Please wait until the area is cleared.");
     }
 
     cm.dispose();
