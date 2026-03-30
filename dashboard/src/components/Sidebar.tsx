@@ -15,6 +15,8 @@ const NAV_ITEMS = [
   { href: "/scripts", label: "Scripts", icon: "📜" },
   { href: "/drops", label: "Drops", icon: "💎" },
   { href: "/events", label: "Events", icon: "🎉" },
+  { href: "/cheats", label: "Cheat Flags", icon: "🚩" },
+  { href: "/worldmap", label: "World Map", icon: "🌏" },
   { href: "/gamemaster", label: "Game Master", icon: "🧠" },
 ];
 

@@ -13,6 +13,10 @@ const PUBLIC_PATHS = [
   "/api/config",
   "/api/launcher/",
   "/api/vote/",
+  "/worldmap",
+  "/api/worldmap/",
+  "/api/gm/actions/map",
+  "/rankings",
 ];
 
 function isPublicPath(pathname: string) {

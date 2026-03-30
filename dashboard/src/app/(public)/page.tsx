@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 function getTimeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -20,6 +20,7 @@ export default function LandingPage() {
   const [rates, setRates] = useState({ exp: "1x", drop: "1x", meso: "1x" });
   const [installTab, setInstallTab] = useState<"launcher" | "manual">("launcher");
   const [augurLog, setAugurLog] = useState<Array<{ type: string; text: string; date: string }>>([]);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [gmModel, setGmModel] = useState("");
   const [stats, setStats] = useState({ players: 0, accounts: 0, characters: 0, maxLevel: 0 });
 
@@ -63,45 +64,86 @@ export default function LandingPage() {
       </div>
 
       {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-8 py-4">
-        <div className="flex items-center gap-2">
-          <Image src="/logo.png" alt="AugurMS" width={44} height={44} className="drop-shadow-[0_0_12px_rgba(245,197,66,0.3)]" />
-          <span className="text-xl font-bold tracking-wide">AugurMS</span>
+      <nav className="relative z-10 px-4 py-4 sm:px-8">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Image src="/logo.png" alt="AugurMS" width={44} height={44} className="drop-shadow-[0_0_12px_rgba(245,197,66,0.3)]" />
+            <span className="text-xl font-bold tracking-wide">AugurMS</span>
+          </div>
+
+          {/* Desktop links */}
+          <div className="hidden items-center gap-4 md:flex">
+            <Link href="/worldmap" className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:text-text-primary">
+              World Map
+            </Link>
+            <Link href="/rankings" className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:text-text-primary">
+              Rankings
+            </Link>
+            <a href="https://github.com/themrzmaster/augurms" target="_blank" rel="noopener noreferrer" className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:text-text-primary">
+              GitHub
+            </a>
+            <Link href="/vote" className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:text-text-primary">
+              Vote
+            </Link>
+            <Link href="/login" className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:text-text-primary">
+              Admin
+            </Link>
+            <Link href="/register" className="rounded-lg bg-accent-gold px-5 py-2 text-sm font-bold text-bg-primary transition hover:bg-accent-gold/90 hover:shadow-[0_0_20px_rgba(245,197,66,0.3)]">
+              Create Account
+            </Link>
+          </div>
+
+          {/* Mobile hamburger */}
+          <div className="flex items-center gap-3 md:hidden">
+            <Link href="/register" className="rounded-lg bg-accent-gold px-4 py-2 text-sm font-bold text-bg-primary">
+              Play
+            </Link>
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-text-secondary transition hover:bg-bg-card"
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? (
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          <Link
-            href="/rankings"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:text-text-primary"
-          >
-            Rankings
-          </Link>
-          <a
-            href="https://github.com/themrzmaster/augurms"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:text-text-primary"
-          >
-            GitHub
-          </a>
-          <Link
-            href="/vote"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:text-text-primary"
-          >
-            Vote
-          </Link>
-          <Link
-            href="/login"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:text-text-primary"
-          >
-            Admin
-          </Link>
-          <Link
-            href="/register"
-            className="rounded-lg bg-accent-gold px-5 py-2 text-sm font-bold text-bg-primary transition hover:bg-accent-gold/90 hover:shadow-[0_0_20px_rgba(245,197,66,0.3)]"
-          >
-            Create Account
-          </Link>
-        </div>
+
+        {/* Mobile menu */}
+        {mobileMenuOpen && (
+          <div className="mt-3 rounded-xl border border-border bg-bg-secondary/95 p-3 backdrop-blur-xl md:hidden">
+            {[
+              { href: "/worldmap", label: "World Map" },
+              { href: "/rankings", label: "Rankings" },
+              { href: "/vote", label: "Vote" },
+              { href: "/login", label: "Admin" },
+            ].map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className="block rounded-lg px-4 py-2.5 text-sm font-medium text-text-secondary transition hover:bg-bg-card hover:text-text-primary"
+              >
+                {item.label}
+              </Link>
+            ))}
+            <a
+              href="https://github.com/themrzmaster/augurms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block rounded-lg px-4 py-2.5 text-sm font-medium text-text-secondary transition hover:bg-bg-card hover:text-text-primary"
+            >
+              GitHub
+            </a>
+          </div>
+        )}
       </nav>
 
       {/* Hero */}
@@ -275,6 +317,52 @@ export default function LandingPage() {
             </div>
           </div>
         )}
+
+        {/* World Map Banner */}
+        <Link
+          href="/worldmap"
+          className="group relative mt-20 block w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-bg-card/50 backdrop-blur-sm transition-all hover:border-accent-gold/30 hover:shadow-[0_0_40px_rgba(245,197,66,0.08)]"
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-accent-gold/[0.04] via-transparent to-accent-purple/[0.04]" />
+          <div className="relative flex items-center gap-6 p-6 sm:p-8">
+            {/* Map preview thumbnails */}
+            <div className="hidden shrink-0 sm:block">
+              <div className="relative h-28 w-44 overflow-hidden rounded-xl border border-border/50 bg-bg-primary/50">
+                <img
+                  src="https://maplestory.io/api/GMS/83/map/100000000/render?resize=0.08"
+                  alt=""
+                  className="sprite-render absolute inset-0 h-full w-full object-cover opacity-60 transition-opacity group-hover:opacity-80"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-bg-primary/80 to-transparent" />
+                <div className="absolute bottom-2 left-2 flex gap-1">
+                  <img src="https://maplestory.io/api/GMS/83/npc/9010000/icon" alt="" className="sprite-render h-6 w-6 opacity-80" />
+                  <img src="https://maplestory.io/api/GMS/83/mob/100100/icon" alt="" className="sprite-render h-6 w-6 opacity-80" />
+                  <img src="https://maplestory.io/api/GMS/83/npc/1012100/icon" alt="" className="sprite-render h-6 w-6 opacity-80" />
+                </div>
+              </div>
+            </div>
+            {/* Text content */}
+            <div className="flex-1">
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-2xl">🌏</span>
+                <h3 className="text-lg font-bold text-text-primary sm:text-xl">
+                  Explore the World Map
+                </h3>
+              </div>
+              <p className="mb-3 max-w-lg text-sm leading-relaxed text-text-secondary">
+                See everywhere the Augur has touched. An interactive map of the
+                entire MapleStory world showing every NPC placed, every spawn
+                changed, every event created — with the AI&apos;s reasoning for each decision.
+              </p>
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-gold transition-all group-hover:gap-2.5">
+                Open World Map
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </span>
+            </div>
+          </div>
+        </Link>
 
         {/* Community Features */}
         <div className="mt-20 w-full max-w-4xl">

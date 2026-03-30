@@ -90,6 +90,27 @@ CREATE TABLE IF NOT EXISTS server_config (
 INSERT IGNORE INTO server_config (config_key, config_value) VALUES
   ('exp_rate', '10'), ('meso_rate', '10'), ('drop_rate', '10'), ('boss_drop_rate', '10');
 
+-- Cheat detection flags (written by game server, reviewed by AI GM)
+CREATE TABLE IF NOT EXISTS cheat_flags (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  character_id INT NOT NULL,
+  account_id INT NOT NULL,
+  character_name VARCHAR(50),
+  violation_type VARCHAR(50) NOT NULL,
+  details TEXT,
+  severity VARCHAR(20) DEFAULT 'threshold',
+  points INT DEFAULT 0,
+  map_id INT DEFAULT 0,
+  reviewed TINYINT DEFAULT 0,
+  reviewed_at DATETIME,
+  review_result VARCHAR(20),
+  review_notes TEXT,
+  flagged_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_account (account_id),
+  INDEX idx_reviewed (reviewed),
+  INDEX idx_flagged (flagged_at)
+);
+
 -- Persistent reactor spawns (loaded by game server on map init, like plife for mobs/NPCs)
 CREATE TABLE IF NOT EXISTS preactor (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

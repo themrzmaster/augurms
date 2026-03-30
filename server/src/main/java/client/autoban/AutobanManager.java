@@ -1,8 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
-
 package client.autoban;
 
 import client.Character;
@@ -10,7 +5,11 @@ import config.YamlConfig;
 import net.server.Server;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.DatabaseConnection;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -57,11 +56,11 @@ public class AutobanManager {
             }
 
             if (points.get(fac) >= fac.getMaximum()) {
-                chr.autoban(reason);
+                flagCheat(fac.name(), reason, "threshold", points.get(fac));
+                points.put(fac, 0); // reset so it can flag again if they keep going
             }
         }
         if (YamlConfig.config.server.USE_AUTOBAN_LOG) {
-            // Lets log every single point too.
             log.info("Autoban - chr {} caused {} {}", Character.makeMapleReadable(chr.getName()), fac.name(), reason);
         }
     }
@@ -75,10 +74,9 @@ public class AutobanManager {
             samemisscount++;
         }
         if (samemisscount > 4) {
-            chr.sendPolice("You will be disconnected for miss godmode.");
-        }
-        //chr.autoban("Autobanned for : " + misses + " Miss godmode", 1);
-        else if (samemisscount > 0) {
+            flagCheat("MISS_GODMODE", "Consecutive miss count: " + misses + ", repeated " + samemisscount + " times", "godmode", samemisscount);
+            samemisscount = 0;
+        } else if (samemisscount > 0) {
             this.lastmisses = misses;
         }
         this.misses = 0;
@@ -118,15 +116,42 @@ public class AutobanManager {
         if (this.timestamp[type] == time) {
             this.timestampcounter[type]++;
             if (this.timestampcounter[type] >= times) {
-                if (YamlConfig.config.server.USE_AUTOBAN) {
-                    chr.getClient().disconnect(false, false);
-                }
+                flagCheat("SPAM_TYPE_" + type, "Repeated timestamp " + time + " for type " + type, "spam", this.timestampcounter[type]);
+                this.timestampcounter[type] = 0; // reset counter after flagging
 
-                log.info("Autoban - Chr {} was caught spamming TYPE {} and has been disconnected", chr, type);
+                log.info("Autoban - Chr {} was caught spamming TYPE {}", chr, type);
             }
         } else {
             this.timestamp[type] = time;
             this.timestampcounter[type] = 0;
         }
+    }
+
+    private void flagCheat(String violationType, String details, String severity, int points) {
+        int charId = chr.getId();
+        int accountId = chr.getAccountID();
+        String charName = chr.getName();
+        int mapId = chr.getMapId();
+
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                 "INSERT INTO cheat_flags (character_id, account_id, character_name, violation_type, details, severity, points, map_id) " +
+                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+            ps.setInt(1, charId);
+            ps.setInt(2, accountId);
+            ps.setString(3, charName);
+            ps.setString(4, violationType);
+            ps.setString(5, details);
+            ps.setString(6, severity);
+            ps.setInt(7, points);
+            ps.setInt(8, mapId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            log.warn("Failed to insert cheat flag for chr {}", charName, e);
+        }
+
+        Server.getInstance().broadcastGMMessage(chr.getWorld(),
+            tools.PacketCreator.sendYellowTip("[CHEAT] " + Character.makeMapleReadable(charName) + " flagged: " + violationType + " - " + details));
+        log.warn("CHEAT FLAG - chr={} account={} type={} details={} map={}", charName, accountId, violationType, details, mapId);
     }
 }

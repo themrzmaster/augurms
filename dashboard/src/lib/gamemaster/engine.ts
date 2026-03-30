@@ -354,6 +354,7 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
     });
     return JSON.stringify({ ...result, message: message || "Client update published" });
   },
+
 };
 
 // ---- OpenAI-format tool schemas ----
