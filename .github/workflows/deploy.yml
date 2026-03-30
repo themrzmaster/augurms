@@ -1,11 +1,24 @@
 name: Deploy & Release
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dashboard:
+        description: 'Deploy dashboard'
+        type: boolean
+        default: true
+      server:
+        description: 'Deploy game server'
+        type: boolean
+        default: false
+      launcher:
+        description: 'Build launcher'
+        type: boolean
+        default: false
 
 jobs:
   deploy-dashboard:
+    if: ${{ inputs.dashboard }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +56,7 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
   deploy-server:
+    if: ${{ inputs.server }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,6 +79,7 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
   build-launcher:
+    if: ${{ inputs.launcher }}
     runs-on: windows-latest
     permissions:
       contents: write

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -628,51 +628,213 @@ function MapDetailView({
 }) {
   const [mapActions, setMapActions] = useState<GMAction[]>(actions);
   const [loadingActions, setLoadingActions] = useState(actions.length === 0);
+  const [miniMap, setMiniMap] = useState<{
+    centerX: number;
+    centerY: number;
+    width: number;
+    height: number;
+    magnification: number;
+  } | null>(null);
+  const [selectedActionId, setSelectedActionId] = useState<number | null>(null);
+  const [hoveredMarkerId, setHoveredMarkerId] = useState<number | null>(null);
+  const mapScrollRef = useRef<HTMLDivElement>(null);
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (actions.length > 0) return;
-    setLoadingActions(true);
-    fetch(`/api/gm/actions/map?mapId=${mapId}`)
+    // Fetch actions if not provided
+    if (actions.length === 0) {
+      setLoadingActions(true);
+      fetch(`/api/gm/actions/map?mapId=${mapId}`)
+        .then((r) => r.json())
+        .then((data) => {
+          setMapActions(data.actions || []);
+          setLoadingActions(false);
+        })
+        .catch(() => setLoadingActions(false));
+    }
+    // Fetch minimap data for coordinate mapping
+    fetch(`/api/worldmap/mapinfo/${mapId}`)
       .then((r) => r.json())
       .then((data) => {
-        setMapActions(data.actions || []);
-        setLoadingActions(false);
+        if (data.miniMap) setMiniMap(data.miniMap);
       })
-      .catch(() => setLoadingActions(false));
+      .catch(() => {});
   }, [mapId, actions.length]);
 
   const name = getMapName(mapId, mapNames);
   const streetName = mapNames[String(mapId)]?.streetName;
 
+  // Actions that have x,y coordinates (can be placed on the map)
+  const actionsWithCoords = useMemo(
+    () => mapActions.filter((a) => a.toolInput?.x !== undefined && a.toolInput?.y !== undefined),
+    [mapActions]
+  );
+
+  // Convert game coordinates to percentage position on the map image
+  const gameToPercent = useCallback(
+    (gx: number, gy: number) => {
+      if (!miniMap) return null;
+      const px = gx / miniMap.magnification + miniMap.centerX;
+      const py = gy / miniMap.magnification + miniMap.centerY;
+      return {
+        left: (px / miniMap.width) * 100,
+        top: (py / miniMap.height) * 100,
+      };
+    },
+    [miniMap]
+  );
+
+  // Click action in timeline → highlight marker and scroll map to it
+  const selectAction = useCallback(
+    (actionId: number) => {
+      setSelectedActionId((prev) => (prev === actionId ? null : actionId));
+      const action = actionsWithCoords.find((a) => a.id === actionId);
+      if (action && miniMap && mapScrollRef.current) {
+        const pos = gameToPercent(action.toolInput.x, action.toolInput.y);
+        if (pos) {
+          const container = mapScrollRef.current;
+          const scrollX =
+            (pos.left / 100) * container.scrollWidth - container.clientWidth / 2;
+          const scrollY =
+            (pos.top / 100) * container.scrollHeight - container.clientHeight / 2;
+          container.scrollTo({ left: scrollX, top: scrollY, behavior: "smooth" });
+        }
+      }
+    },
+    [actionsWithCoords, miniMap, gameToPercent]
+  );
+
+  // Click marker → scroll timeline to that action
+  const selectMarker = useCallback((actionId: number) => {
+    setSelectedActionId((prev) => (prev === actionId ? null : actionId));
+    const el = document.getElementById(`action-${actionId}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
   return (
     <div className="flex h-full flex-col gap-4">
-      {/* Map render */}
+      {/* Map render with action markers */}
       <div className="relative overflow-hidden rounded-xl border border-border bg-bg-card">
-        <div className="relative h-[350px] overflow-auto">
-          <img
-            src={`${MAPLESTORY_API}/map/${mapId}/render?resize=0.6`}
-            alt={name}
-            className="sprite-render min-h-full min-w-full object-contain"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = `${MAPLESTORY_API}/map/${mapId}/minimap`;
-            }}
-          />
-          {/* Overlay with map info */}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-bg-primary/90 to-transparent p-4 pt-12">
+        <div ref={mapScrollRef} className="relative h-[400px] overflow-auto">
+          <div className="relative inline-block">
+            <img
+              src={`${MAPLESTORY_API}/map/${mapId}/render?resize=0.5`}
+              alt={name}
+              className="sprite-render block"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = `${MAPLESTORY_API}/map/${mapId}/minimap`;
+              }}
+            />
+
+            {/* Action markers overlay */}
+            {miniMap &&
+              actionsWithCoords.map((action) => {
+                const pos = gameToPercent(action.toolInput.x, action.toolInput.y);
+                if (!pos || pos.left < 0 || pos.left > 100 || pos.top < 0 || pos.top > 100)
+                  return null;
+                const color = CATEGORY_COLORS[action.category] || "#8888a8";
+                const isSelected = selectedActionId === action.id;
+                const isHovered = hoveredMarkerId === action.id;
+                const lifeId = action.toolInput?.lifeId || action.toolInput?.npcId || action.toolInput?.reactorId;
+                const isNpc = action.toolInput?.type === "n" || action.category === "npcs";
+                const isReactor = action.category === "reactors";
+
+                return (
+                  <div
+                    key={action.id}
+                    className="absolute z-10 -translate-x-1/2 -translate-y-1/2 cursor-pointer"
+                    style={{ left: `${pos.left}%`, top: `${pos.top}%` }}
+                    onMouseEnter={() => setHoveredMarkerId(action.id)}
+                    onMouseLeave={() => setHoveredMarkerId(null)}
+                    onClick={() => selectMarker(action.id)}
+                  >
+                    {/* Pulse ring for selected */}
+                    {isSelected && (
+                      <span
+                        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                        style={{
+                          width: 32,
+                          height: 32,
+                          backgroundColor: color,
+                          opacity: 0.25,
+                          animation: "pulse-ring 1.5s ease-out infinite",
+                        }}
+                      />
+                    )}
+
+                    {/* Glow */}
+                    <span
+                      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full blur-sm transition-all"
+                      style={{
+                        width: isSelected || isHovered ? 20 : 14,
+                        height: isSelected || isHovered ? 20 : 14,
+                        backgroundColor: color,
+                        opacity: isSelected ? 0.5 : 0.3,
+                      }}
+                    />
+
+                    {/* Main dot */}
+                    <span
+                      className="relative block rounded-full border-2 transition-transform"
+                      style={{
+                        width: isSelected || isHovered ? 14 : 10,
+                        height: isSelected || isHovered ? 14 : 10,
+                        backgroundColor: color,
+                        borderColor: isSelected ? "#fff" : `${color}80`,
+                        boxShadow: `0 0 ${isSelected ? 16 : 8}px ${color}80`,
+                        transform: isSelected ? "scale(1.2)" : undefined,
+                      }}
+                    />
+
+                    {/* Sprite icon floating above */}
+                    {lifeId && (isSelected || isHovered) && (
+                      <img
+                        src={`${MAPLESTORY_API}/${isNpc ? "npc" : isReactor ? "item" : "mob"}/${lifeId}/icon`}
+                        alt=""
+                        className="sprite-render absolute bottom-full left-1/2 mb-1 h-8 w-8 -translate-x-1/2 drop-shadow-[0_0_4px_rgba(0,0,0,0.8)]"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    )}
+
+                    {/* Hover tooltip */}
+                    {isHovered && (
+                      <div className="absolute bottom-full left-1/2 z-50 mb-6 -translate-x-1/2 whitespace-nowrap">
+                        <div className="rounded-lg border border-border bg-bg-secondary px-3 py-2 shadow-xl">
+                          <div className="text-xs font-medium text-text-primary">
+                            {getToolLabel(action.toolName)}
+                          </div>
+                          <div className="text-[10px] text-text-muted">
+                            ({action.toolInput.x}, {action.toolInput.y})
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+
+          {/* Map info overlay */}
+          <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-bg-primary/90 to-transparent p-4 pt-8">
             <div className="flex items-end justify-between">
               <div>
-                <h2 className="text-xl font-bold text-text-primary">
-                  {name}
-                </h2>
+                <h2 className="text-xl font-bold text-text-primary">{name}</h2>
                 {streetName && (
-                  <p className="text-sm text-text-secondary">
-                    {streetName}
-                  </p>
+                  <p className="text-sm text-text-secondary">{streetName}</p>
                 )}
               </div>
-              <span className="rounded-lg bg-bg-card/80 px-2 py-1 font-mono text-xs text-text-muted">
-                ID: {mapId}
-              </span>
+              <div className="flex items-center gap-2">
+                {actionsWithCoords.length > 0 && miniMap && (
+                  <span className="rounded-lg bg-accent-gold/10 px-2 py-1 text-xs font-medium text-accent-gold">
+                    {actionsWithCoords.length} pinned
+                  </span>
+                )}
+                <span className="rounded-lg bg-bg-card/80 px-2 py-1 font-mono text-xs text-text-muted">
+                  ID: {mapId}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -690,7 +852,11 @@ function MapDetailView({
             )}
           </h3>
         </div>
-        <div className="overflow-y-auto p-4" style={{ maxHeight: "calc(100vh - 600px)" }}>
+        <div
+          ref={timelineScrollRef}
+          className="overflow-y-auto p-4"
+          style={{ maxHeight: "calc(100vh - 620px)" }}
+        >
           {loadingActions ? (
             <div className="flex items-center justify-center py-8">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent-gold border-t-transparent" />
@@ -705,16 +871,29 @@ function MapDetailView({
               <div className="absolute bottom-0 left-2 top-0 w-px bg-border" />
 
               {mapActions.map((action) => {
-                const color =
-                  CATEGORY_COLORS[action.category] || "#8888a8";
+                const color = CATEGORY_COLORS[action.category] || "#8888a8";
+                const hasCoords = action.toolInput?.x !== undefined;
+                const isSelected = selectedActionId === action.id;
+
                 return (
-                  <div key={action.id} className="relative">
+                  <div
+                    key={action.id}
+                    id={`action-${action.id}`}
+                    className={`relative transition-all ${isSelected ? "scale-[1.01]" : ""}`}
+                  >
                     {/* Timeline dot */}
                     <span
                       className="absolute -left-[18px] top-1 h-3 w-3 rounded-full border-2 border-bg-card"
                       style={{ backgroundColor: color }}
                     />
-                    <div className="rounded-lg border border-border/50 bg-bg-secondary/30 p-3">
+                    <div
+                      className={`rounded-lg border p-3 transition-all ${
+                        isSelected
+                          ? "border-accent-gold/40 bg-accent-gold/[0.06]"
+                          : "border-border/50 bg-bg-secondary/30"
+                      } ${hasCoords ? "cursor-pointer hover:border-border" : ""}`}
+                      onClick={hasCoords ? () => selectAction(action.id) : undefined}
+                    >
                       <div className="flex items-center gap-2">
                         <span
                           className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase"
@@ -723,12 +902,18 @@ function MapDetailView({
                             color: color,
                           }}
                         >
-                          {CATEGORY_LABELS[action.category] ||
-                            action.category}
+                          {CATEGORY_LABELS[action.category] || action.category}
                         </span>
                         <span className="text-sm font-medium text-text-primary">
                           {getToolLabel(action.toolName)}
                         </span>
+                        {hasCoords && (
+                          <span
+                            className="ml-1 h-1.5 w-1.5 rounded-full"
+                            style={{ backgroundColor: color }}
+                            title="Has map position — click to locate"
+                          />
+                        )}
                         <span className="ml-auto text-xs text-text-muted">
                           {formatDate(action.executedAt)}
                         </span>
@@ -748,9 +933,7 @@ function MapDetailView({
                                 alt=""
                                 className="sprite-render h-4 w-4"
                                 onError={(e) => {
-                                  (
-                                    e.target as HTMLImageElement
-                                  ).style.display = "none";
+                                  (e.target as HTMLImageElement).style.display = "none";
                                 }}
                               />
                               ID: {action.toolInput.lifeId || action.toolInput.npcId}
@@ -758,8 +941,7 @@ function MapDetailView({
                           )}
                           {action.toolInput.x !== undefined && (
                             <span className="rounded bg-bg-card px-2 py-0.5 text-[10px] text-text-muted">
-                              Position: ({action.toolInput.x},{" "}
-                              {action.toolInput.y})
+                              Position: ({action.toolInput.x}, {action.toolInput.y})
                             </span>
                           )}
                         </div>
