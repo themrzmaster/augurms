@@ -664,6 +664,37 @@ function MapDetailView({
   const name = getMapName(mapId, mapNames);
   const streetName = mapNames[String(mapId)]?.streetName;
 
+  // Determine which actions are "inactive" (placed then later removed)
+  const inactiveActionIds = useMemo(() => {
+    const inactive = new Set<number>();
+    // For each remove action, find the matching earlier add action
+    for (const action of mapActions) {
+      if (!action.toolName.startsWith("remove_")) continue;
+      const entityId =
+        action.toolInput?.reactorId || action.toolInput?.lifeId;
+      if (!entityId) continue;
+      // Find the most recent add for this entity
+      const addTool = action.toolName.replace("remove_", "add_");
+      for (const other of mapActions) {
+        if (other.toolName !== addTool) continue;
+        const otherId =
+          other.toolInput?.reactorId || other.toolInput?.lifeId;
+        if (otherId === entityId) {
+          inactive.add(other.id);
+          inactive.add(action.id); // the remove itself is also inactive
+          break;
+        }
+      }
+      // If no matching add found, just mark the remove as inactive
+      if (!inactive.has(action.id)) inactive.add(action.id);
+    }
+    // Also mark cleanup_event actions as inactive
+    for (const action of mapActions) {
+      if (action.toolName.startsWith("cleanup_")) inactive.add(action.id);
+    }
+    return inactive;
+  }, [mapActions]);
+
   // Actions that have x,y coordinates (can be placed on the map)
   const actionsWithCoords = useMemo(
     () => mapActions.filter((a) => a.toolInput?.x !== undefined && a.toolInput?.y !== undefined),
@@ -732,7 +763,8 @@ function MapDetailView({
                 const pos = gameToPercent(action.toolInput.x, action.toolInput.y);
                 if (!pos || pos.left < 0 || pos.left > 100 || pos.top < 0 || pos.top > 100)
                   return null;
-                const color = CATEGORY_COLORS[action.category] || "#8888a8";
+                const isInactive = inactiveActionIds.has(action.id);
+                const color = isInactive ? "#555570" : (CATEGORY_COLORS[action.category] || "#8888a8");
                 const isSelected = selectedActionId === action.id;
                 const isHovered = hoveredMarkerId === action.id;
                 const lifeId = action.toolInput?.lifeId || action.toolInput?.npcId || action.toolInput?.reactorId;
@@ -871,7 +903,8 @@ function MapDetailView({
               <div className="absolute bottom-0 left-2 top-0 w-px bg-border" />
 
               {mapActions.map((action) => {
-                const color = CATEGORY_COLORS[action.category] || "#8888a8";
+                const isInactive = inactiveActionIds.has(action.id);
+                const color = isInactive ? "#555570" : (CATEGORY_COLORS[action.category] || "#8888a8");
                 const hasCoords = action.toolInput?.x !== undefined;
                 const isSelected = selectedActionId === action.id;
 
@@ -879,7 +912,7 @@ function MapDetailView({
                   <div
                     key={action.id}
                     id={`action-${action.id}`}
-                    className={`relative transition-all ${isSelected ? "scale-[1.01]" : ""}`}
+                    className={`relative transition-all ${isSelected ? "scale-[1.01]" : ""} ${isInactive ? "opacity-50" : ""}`}
                   >
                     {/* Timeline dot */}
                     <span
@@ -904,10 +937,15 @@ function MapDetailView({
                         >
                           {CATEGORY_LABELS[action.category] || action.category}
                         </span>
-                        <span className="text-sm font-medium text-text-primary">
+                        <span className={`text-sm font-medium ${isInactive ? "text-text-muted line-through" : "text-text-primary"}`}>
                           {getToolLabel(action.toolName)}
                         </span>
-                        {hasCoords && (
+                        {isInactive && (
+                          <span className="rounded bg-bg-card px-1.5 py-0.5 text-[9px] font-medium uppercase text-text-muted">
+                            Removed
+                          </span>
+                        )}
+                        {hasCoords && !isInactive && (
                           <span
                             className="ml-1 h-1.5 w-1.5 rounded-full"
                             style={{ backgroundColor: color }}

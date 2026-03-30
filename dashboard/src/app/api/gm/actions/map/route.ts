@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ actions: actions.map(formatAction) });
     }
 
-    // Action counts grouped by mapId and category
+    // Action counts grouped by mapId and category (exclude removes/cleanups for global view)
     const counts = await query(
       `SELECT
          JSON_UNQUOTE(JSON_EXTRACT(tool_input, '$.mapId')) as map_id,
@@ -62,6 +62,8 @@ export async function GET(request: NextRequest) {
          MAX(executed_at) as last_action
        FROM gm_actions
        WHERE ${MAP_FILTER} ${timeClause}
+         AND tool_name NOT LIKE 'remove_%'
+         AND tool_name NOT LIKE 'cleanup_%'
        GROUP BY map_id, category
        ORDER BY last_action DESC`
     );

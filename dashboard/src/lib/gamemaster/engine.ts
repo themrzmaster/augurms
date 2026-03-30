@@ -59,6 +59,36 @@ const WRITE_TOOLS = new Set([
   "publish_client_update",
 ]);
 
+// ---- Coordinate validation against map footholds ----
+
+async function validateMapCoords(mapId: number, x: number, y: number): Promise<string | null> {
+  try {
+    const data = await api(`/api/maps/${mapId}`);
+    if (!data.footholds) return null; // can't validate, allow it
+    const fhs = data.footholds;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const layer of Object.values(fhs) as any[]) {
+      for (const group of Object.values(layer) as any[]) {
+        if (typeof group !== "object") continue;
+        for (const fh of Object.values(group) as any[]) {
+          if (!fh || typeof fh !== "object") continue;
+          if (fh.x1 !== undefined) { minX = Math.min(minX, fh.x1, fh.x2); maxX = Math.max(maxX, fh.x1, fh.x2); }
+          if (fh.y1 !== undefined) { minY = Math.min(minY, fh.y1, fh.y2); maxY = Math.max(maxY, fh.y1, fh.y2); }
+        }
+      }
+    }
+    if (minX === Infinity) return null; // no footholds found
+    // Add generous padding (200 units) for objects near edges
+    const pad = 200;
+    if (x < minX - pad || x > maxX + pad || y < minY - pad || y > maxY + pad) {
+      return `Coordinates (${x}, ${y}) are outside the map's walkable area (x: ${minX}..${maxX}, y: ${minY}..${maxY}). Use get_map to find valid spawn positions from existing life entries, then use coordinates near those.`;
+    }
+    return null;
+  } catch {
+    return null; // can't validate, allow it
+  }
+}
+
 // ---- Tool handlers (name → async function) ----
 
 const toolHandlers: Record<string, (args: any) => Promise<string>> = {
@@ -126,8 +156,11 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
     return JSON.stringify(data);
   },
 
-  add_map_spawn: async ({ mapId, type, lifeId, x, y }) =>
-    JSON.stringify(await api(`/api/maps/${mapId}/spawns`, { method: "POST", body: JSON.stringify({ type, id: lifeId, x, y }) })),
+  add_map_spawn: async ({ mapId, type, lifeId, x, y }) => {
+    const err = await validateMapCoords(mapId, x, y);
+    if (err) return JSON.stringify({ error: err });
+    return JSON.stringify(await api(`/api/maps/${mapId}/spawns`, { method: "POST", body: JSON.stringify({ type, id: lifeId, x, y }) }));
+  },
 
   remove_map_spawn: async ({ mapId, type, lifeId }) =>
     JSON.stringify(await api(`/api/maps/${mapId}/spawns`, { method: "DELETE", body: JSON.stringify({ type, id: lifeId }) })),
@@ -138,8 +171,11 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
   get_map_reactors: async ({ mapId }) =>
     JSON.stringify(await api(`/api/maps/${mapId}/reactors`)),
 
-  add_map_reactor: async ({ mapId, reactorId, x, y, f, reactorTime, name }) =>
-    JSON.stringify(await api(`/api/maps/${mapId}/reactors`, { method: "POST", body: JSON.stringify({ reactorId, x, y, f, reactorTime, name }) })),
+  add_map_reactor: async ({ mapId, reactorId, x, y, f, reactorTime, name }) => {
+    const err = await validateMapCoords(mapId, x, y);
+    if (err) return JSON.stringify({ error: err });
+    return JSON.stringify(await api(`/api/maps/${mapId}/reactors`, { method: "POST", body: JSON.stringify({ reactorId, x, y, f, reactorTime, name }) }));
+  },
 
   remove_map_reactor: async ({ mapId, reactorId }) =>
     JSON.stringify(await api(`/api/maps/${mapId}/reactors`, { method: "DELETE", body: JSON.stringify({ reactorId }) })),
