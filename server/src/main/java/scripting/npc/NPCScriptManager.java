@@ -133,9 +133,14 @@ public class NPCScriptManager extends AbstractScriptManager {
                     engine = getInvocableScriptEngine("npc/" + npc + ".js", c);
                     cm.resetItemScript();
                 }
-                if (engine == null && isGmNpc(npc)) {
-                    engine = getInvocableScriptEngine("npc/9900100.js", c);
-                    cm.resetItemScript();
+                if (engine == null) {
+                    boolean gmNpc = isGmNpc(npc);
+                    log.info("[GMnpc] npc={} isGmNpc={}", npc, gmNpc);
+                    if (gmNpc) {
+                        engine = getInvocableScriptEngine("npc/9900100.js", c);
+                        log.info("[GMnpc] 9900100.js engine={}", engine != null ? "loaded" : "NULL");
+                        cm.resetItemScript();
+                    }
                 }
                 if (engine == null) {
                     dispose(c);
@@ -223,10 +228,12 @@ public class NPCScriptManager extends AbstractScriptManager {
                      "SELECT 1 FROM gm_npcs WHERE npc_id = ? AND enabled = 1")) {
             ps.setInt(1, npcId);
             try (java.sql.ResultSet rs = ps.executeQuery()) {
-                return rs.next();
+                boolean found = rs.next();
+                log.info("[GMnpc] isGmNpc({}) query result={}", npcId, found);
+                return found;
             }
         } catch (Exception e) {
-            log.warn("isGmNpc({}) failed: {}", npcId, e.getMessage());
+            log.warn("[GMnpc] isGmNpc({}) EXCEPTION: {}", npcId, e.getMessage(), e);
             return false;
         }
     }
