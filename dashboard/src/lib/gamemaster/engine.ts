@@ -952,15 +952,12 @@ Available NPC appearances (pick one):
 - 9000018: Matilda (woman with cat, good for shops)
 - 9000003: Vikan (warrior-looking man)
 - 9000005: Vikone (female character)
-- 9000042: Gaga (quirky character)
-- 9000055: Aramia (elegant woman)
 - 9010005: Diane (young woman)
 - 9010006: Sally (young woman)
 - 9010007: Josh (young man)
-- 9201076: Ludmilla (mysterious woman)
-- 9201136: Olivia (friendly woman)
-- 9300010: Mr. Moneybags (rich man, great for shops)
-- 9201028: Malady (dark themed)
+- 9000035: Agent P
+- 9000039: Agent W
+- 9201117: Toh Relicseeker
 
 NPC types:
 - "exchange": Currency shop. Players trade votepoints/meso/items for rewards.

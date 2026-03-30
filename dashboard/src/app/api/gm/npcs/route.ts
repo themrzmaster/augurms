@@ -12,24 +12,18 @@ interface GmNpc {
   updated_at: string;
 }
 
-// NPC IDs verified to have interactive WZ data (client `script` field).
-// NPCs without this field are decoration-only — players can't click them.
+// NPC IDs verified to have interactive WZ data (client `script` field)
+// AND zero quest refs in Quest.wz. NPCs with quests get their clicks
+// intercepted by the client (shows quest UI, no NPC talk packet sent).
 const INTERACTIVE_NPC_IDS = new Set([
   9000018, // Matilda (woman with cat)
   9000003, // Vikan (warrior man)
   9000005, // Vikone (female character)
-  9000042, // Gaga (quirky character)
-  9000055, // Aramia (elegant woman)
   9010005, // Diane (young woman)
   9010006, // Sally (young woman)
   9010007, // Josh (young man)
-  9201076, // Ludmilla (mysterious woman)
-  9201136, // Olivia (friendly woman)
-  9300010, // Mr. Moneybags (rich man)
-  9201028, // Malady (dark themed)
   9000035, // Agent P
   9000039, // Agent W
-  9201091, // O-Pongo
   9201117, // Toh Relicseeker
 ]);
 
