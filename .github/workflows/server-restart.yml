@@ -1,0 +1,14 @@
+name: Auto-Restart Game Server
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily at 06:00 UTC
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check and restart if pending
+        run: |
+          RESPONSE=$(curl -s https://augurms.com/api/gm/restart)
+          echo "Response: $RESPONSE"

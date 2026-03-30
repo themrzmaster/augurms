@@ -964,7 +964,7 @@ NPC types:
 - "dialogue": Multi-page text. Good for lore, announcements, guides.
 - "teleporter": Warp menu. Players pick a destination.
 
-The backend handles map spawning and script routing automatically. Takes effect on next server restart.`,
+The backend handles map spawning and script routing automatically. Spawns take effect on next server restart (auto-restarts daily at 06:00 UTC if pending).`,
       parameters: {
         type: "object",
         properties: {

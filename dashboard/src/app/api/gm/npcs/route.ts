@@ -137,6 +137,9 @@ export async function POST(request: NextRequest) {
         [mapId, chosenId, cy, foothold, rx0, rx1, x, y],
       );
       spawnMessage = ` Spawned on map ${mapId} at (${x}, ${y}). Takes effect on server restart.`;
+      await execute(
+        "INSERT INTO server_config (config_key, config_value) VALUES ('restart_pending', 'true') ON DUPLICATE KEY UPDATE config_value = 'true'"
+      );
     }
 
     return NextResponse.json(
@@ -277,6 +280,12 @@ export async function DELETE(request: NextRequest) {
       "DELETE FROM plife WHERE life = ? AND type = 'n' AND world = 0",
       [npcIdToDelete],
     );
+
+    if (plifeResult.affectedRows > 0) {
+      await execute(
+        "INSERT INTO server_config (config_key, config_value) VALUES ('restart_pending', 'true') ON DUPLICATE KEY UPDATE config_value = 'true'"
+      );
+    }
 
     return NextResponse.json({
       success: true,

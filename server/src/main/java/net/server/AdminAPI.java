@@ -49,6 +49,7 @@ public class AdminAPI {
             server.start();
             log.info("Admin API started on port {}", PORT);
             loadRatesFromDb();
+            loadServerMessageFromDb();
         } catch (IOException e) {
             log.error("Failed to start Admin API", e);
         }
@@ -255,6 +256,7 @@ public class AdminAPI {
         }
 
         world.setServerMessage(message);
+        saveServerMessageToDb(message);
         log.info("Admin API: Server message updated — {}", message);
         respond(ex, 200, String.format("{\"success\":true,\"message\":\"%s\"}", message.replace("\"", "\\\"")));
     }
@@ -349,6 +351,37 @@ public class AdminAPI {
             }
         } catch (SQLException e) {
             log.warn("Admin API: Could not save rates to DB", e);
+        }
+    }
+
+    private void loadServerMessageFromDb() {
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement("SELECT config_value FROM server_config WHERE config_key = 'server_message'");
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                String msg = rs.getString("config_value");
+                if (msg != null && !msg.isEmpty()) {
+                    World world = Server.getInstance().getWorld(0);
+                    if (world != null) {
+                        world.setServerMessage(msg);
+                        log.info("Admin API: Loaded server message from DB — {}", msg);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            log.warn("Admin API: Could not load server message from DB (table may not exist yet)", e);
+        }
+    }
+
+    private void saveServerMessageToDb(String message) {
+        String upsert = "INSERT INTO server_config (config_key, config_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)";
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(upsert)) {
+            ps.setString(1, "server_message");
+            ps.setString(2, message);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            log.warn("Admin API: Could not save server message to DB", e);
         }
     }
 

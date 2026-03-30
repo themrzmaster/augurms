@@ -32,6 +32,7 @@ jobs:
           R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }}
           DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}
           GTOP100_PINGBACK_KEY=${{ secrets.GTOP100_PINGBACK_KEY }}
+          FLY_API_TOKEN=${{ secrets.FLY_API_TOKEN }}
           SECRETS
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
