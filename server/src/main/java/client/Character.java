@@ -918,7 +918,7 @@ public class Character extends AbstractCharacterObject {
     }
 
     public void Hide(boolean hide, boolean login) {
-        if (isGM() && hide != this.hidden) {
+        if (gmLevel >= 1 && hide != this.hidden) {
             if (!hide) {
                 this.hidden = false;
                 sendPacket(PacketCreator.getGMEffect(0x10, (byte) 0));
