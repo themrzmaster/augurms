@@ -69,7 +69,16 @@ export async function PUT(request: NextRequest) {
          WHERE account_id = ? AND reviewed = 0`,
         [result, notes || null, Number(account_id)]
       );
-      return NextResponse.json({ success: true, updated: res.affectedRows });
+
+      // If verdict is ban, actually ban the account
+      if (result === "ban") {
+        await execute(
+          `UPDATE accounts SET banned = 1, banreason = ? WHERE id = ?`,
+          [notes || "Banned for cheating", Number(account_id)]
+        );
+      }
+
+      return NextResponse.json({ success: true, updated: res.affectedRows, banned: result === "ban" });
     }
 
     // By specific flag IDs

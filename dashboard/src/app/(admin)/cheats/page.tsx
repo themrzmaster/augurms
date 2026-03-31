@@ -87,8 +87,13 @@ export default function CheatsPage() {
     }
   }
 
-  async function reviewPlayer(accountId: number, result: "innocent" | "warning" | "ban") {
-    const notes = prompt(`Notes for marking all flags as "${result}":`);
+  async function reviewPlayer(accountId: number, charName: string, result: "innocent" | "warning" | "ban") {
+    if (result === "ban") {
+      const confirmed = confirm(`This will BAN account #${accountId} (${charName}). Are you sure?`);
+      if (!confirmed) return;
+    }
+
+    const notes = prompt(`${result === "ban" ? "Ban" : "Review"} reason:`);
     if (notes === null) return;
 
     await fetch("/api/gm/cheats", {
@@ -227,19 +232,19 @@ export default function CheatsPage() {
                         {Number(p.unreviewed_flags) > 0 && (
                           <div className="flex gap-1">
                             <button
-                              onClick={() => reviewPlayer(p.account_id, "innocent")}
+                              onClick={() => reviewPlayer(p.account_id, p.character_name, "innocent")}
                               className="rounded px-2 py-1 text-xs font-medium bg-accent-green/10 text-accent-green hover:bg-accent-green/20 transition"
                             >
                               Innocent
                             </button>
                             <button
-                              onClick={() => reviewPlayer(p.account_id, "warning")}
+                              onClick={() => reviewPlayer(p.account_id, p.character_name, "warning")}
                               className="rounded px-2 py-1 text-xs font-medium bg-accent-orange/10 text-accent-orange hover:bg-accent-orange/20 transition"
                             >
                               Warn
                             </button>
                             <button
-                              onClick={() => reviewPlayer(p.account_id, "ban")}
+                              onClick={() => reviewPlayer(p.account_id, p.character_name, "ban")}
                               className="rounded px-2 py-1 text-xs font-medium bg-accent-red/10 text-accent-red hover:bg-accent-red/20 transition"
                             >
                               Ban
