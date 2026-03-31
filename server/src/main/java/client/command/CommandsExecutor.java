@@ -383,6 +383,9 @@ public class CommandsExecutor {
 
         addCommand("buffme", 1, BuffMeCommand.class);
         addCommand("goto", 1, GotoCommand.class);
+        addCommand("dc", 1, DcCommand.class);
+        addCommand("ban", 1, BanCommand.class);
+        addCommand("unban", 1, UnBanCommand.class);
 
         commandsNameDesc.add(levelCommandsCursor);
     }
@@ -401,7 +404,7 @@ public class CommandsExecutor {
         addCommand("buffmap", 2, BuffMapCommand.class);
         addCommand("buff", 2, BuffCommand.class);
         addCommand("bomb", 2, BombCommand.class);
-        addCommand("dc", 2, DcCommand.class);
+        // dc moved to lv1 (moderator)
         addCommand("cleardrops", 2, ClearDropsCommand.class);
         addCommand("clearslot", 2, ClearSlotCommand.class);
         addCommand("clearsavelocs", 2, ClearSavedLocationsCommand.class);
@@ -476,8 +479,7 @@ public class CommandsExecutor {
         addCommand("startmapevent", 3, StartMapEventCommand.class);
         addCommand("stopmapevent", 3, StopMapEventCommand.class);
         addCommand("online2", 3, OnlineTwoCommand.class);
-        addCommand("ban", 3, BanCommand.class);
-        addCommand("unban", 3, UnBanCommand.class);
+        // ban/unban moved to lv1 (moderator)
         addCommand("healmap", 3, HealMapCommand.class);
         addCommand("healperson", 3, HealPersonCommand.class);
         addCommand("hurt", 3, HurtCommand.class);

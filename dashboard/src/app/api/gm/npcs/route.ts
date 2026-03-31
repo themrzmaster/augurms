@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query, execute } from "@/lib/db";
+import { restartGameServer } from "@/lib/fly-restart";
 
 interface GmNpc {
   id: number;
@@ -136,10 +137,8 @@ export async function POST(request: NextRequest) {
          VALUES (0, ?, ?, 'n', ?, 0, ?, ?, ?, ?, ?, 0, -1)`,
         [mapId, chosenId, cy, foothold, rx0, rx1, x, y],
       );
-      spawnMessage = ` Spawned on map ${mapId} at (${x}, ${y}). Takes effect on server restart.`;
-      await execute(
-        "INSERT INTO server_config (config_key, config_value) VALUES ('restart_pending', 'true') ON DUPLICATE KEY UPDATE config_value = 'true'"
-      );
+      spawnMessage = ` Spawned on map ${mapId} at (${x}, ${y}). Restarting server to apply.`;
+      restartGameServer().catch(() => {});
     }
 
     return NextResponse.json(
@@ -282,9 +281,7 @@ export async function DELETE(request: NextRequest) {
     );
 
     if (plifeResult.affectedRows > 0) {
-      await execute(
-        "INSERT INTO server_config (config_key, config_value) VALUES ('restart_pending', 'true') ON DUPLICATE KEY UPDATE config_value = 'true'"
-      );
+      restartGameServer().catch(() => {});
     }
 
     return NextResponse.json({
