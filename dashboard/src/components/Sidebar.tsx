@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { href: "/cheats", label: "Cheat Flags", icon: "🚩" },
   { href: "/worldmap", label: "World Map", icon: "🌏" },
   { href: "/gamemaster", label: "Game Master", icon: "🧠" },
+  { href: "/tracking", label: "Click Tracking", icon: "📊" },
 ];
 
 export default function Sidebar() {
