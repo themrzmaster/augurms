@@ -128,7 +128,24 @@ export async function POST(request: NextRequest) {
     // Auto-spawn on map if mapId + coords provided
     let spawnMessage = "";
     if (mapId !== undefined && x !== undefined && y !== undefined) {
-      const foothold = fh || 0;
+      // fh=0 makes NPCs invisible. If not provided, look up from map footholds.
+      let foothold = fh || 0;
+      if (!foothold) {
+        try {
+          const mapRes = await fetch(
+            `${process.env.COSMIC_DASHBOARD_URL || "http://localhost:3000"}/api/maps/${mapId}`,
+          );
+          if (mapRes.ok) {
+            const mapData = await mapRes.json();
+            const fhs = (mapData.footholds || []) as { id: string; x1: number; y1: number; x2: number; y2: number }[];
+            // Find a foothold that contains the x coordinate
+            const match = fhs.find(
+              (f) => x >= Math.min(f.x1, f.x2) && x <= Math.max(f.x1, f.x2),
+            );
+            if (match) foothold = parseInt(match.id);
+          }
+        } catch { /* fallback to 0 */ }
+      }
       const cy = y;
       const rx0 = x - 50;
       const rx1 = x + 50;
