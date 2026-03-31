@@ -36,7 +36,7 @@ RUN yum install -y tar gzip && yum clean all
 WORKDIR /opt/server
 # Download WZ files from R2 (30MB compressed, 573MB extracted)
 # Cache bust: change this value to force re-download of WZ files
-ARG WZ_VERSION=2
+ARG WZ_VERSION=3
 ARG WZ_URL=https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/server-wz.tar.gz
 RUN curl -fsSL "$WZ_URL" -o /tmp/wz.tar.gz && tar xzf /tmp/wz.tar.gz && rm /tmp/wz.tar.gz
 # Copy the JAR we build earlier.
