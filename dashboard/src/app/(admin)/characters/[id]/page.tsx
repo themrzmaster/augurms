@@ -360,6 +360,40 @@ export default function CharacterDetailPage() {
             <StatField label="Map ID" name="map" value={fields.map} onChange={handleFieldChange} />
           </Card>
 
+          {/* Role / GM Level */}
+          <Card title="Role">
+            <div className="space-y-2">
+              {[
+                { level: 0, label: "Player", desc: "Normal player", color: "border-border bg-bg-secondary text-text-secondary" },
+                { level: 1, label: "Moderator", desc: "@ban, @unban, @dc, @goto", color: "border-accent-blue/30 bg-accent-blue/5 text-accent-blue" },
+                { level: 2, label: "GM", desc: "@warp, @item, @jail, @heal, @job", color: "border-accent-purple/30 bg-accent-purple/5 text-accent-purple" },
+                { level: 3, label: "Senior GM", desc: "@spawn, @fame, @givenx, @fly", color: "border-accent-gold/30 bg-accent-gold/5 text-accent-gold" },
+                { level: 6, label: "Admin", desc: "Full access", color: "border-accent-red/30 bg-accent-red/5 text-accent-red" },
+              ].map((role) => (
+                <button
+                  key={role.level}
+                  onClick={() => handleFieldChange("gm", role.level)}
+                  className={`w-full flex items-center justify-between rounded-lg border px-4 py-3 text-sm transition-all duration-200 ${
+                    fields.gm === role.level
+                      ? role.color + " shadow-sm"
+                      : "border-border bg-bg-secondary/50 text-text-muted hover:bg-bg-card-hover"
+                  }`}
+                >
+                  <div className="text-left">
+                    <span className="font-semibold">{role.label}</span>
+                    <p className="text-xs opacity-70 mt-0.5">{role.desc}</p>
+                  </div>
+                  {fields.gm === role.level && (
+                    <span className="text-xs font-bold">Active</span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-text-muted">
+              Click &quot;Save Changes&quot; to apply role change. Player must relog.
+            </p>
+          </Card>
+
           {/* Quick Actions */}
           <Card title="Quick Actions">
             <div className="grid grid-cols-2 gap-3">
@@ -380,12 +414,6 @@ export default function CharacterDetailPage() {
                 className="rounded-lg border border-accent-orange/20 bg-accent-orange/5 px-3 py-2.5 text-sm font-medium text-accent-orange transition-all duration-200 hover:bg-accent-orange/15 hover:border-accent-orange/40"
               >
                 Give Mesos
-              </button>
-              <button
-                onClick={() => quickAction({ gm: 6 })}
-                className="rounded-lg border border-accent-purple/20 bg-accent-purple/5 px-3 py-2.5 text-sm font-medium text-accent-purple transition-all duration-200 hover:bg-accent-purple/15 hover:border-accent-purple/40"
-              >
-                Set GM
               </button>
             </div>
             <p className="mt-3 text-xs text-text-muted">
