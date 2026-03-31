@@ -9,8 +9,12 @@ export async function GET(
 
   // Sanitize: alphanumeric, dashes, underscores only, max 64 chars
   const safeRef = ref.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || "augurms.com";
+  const proto = request.headers.get("x-forwarded-proto") || "https";
+  const baseUrl = `${proto}://${host}`;
+
   if (!safeRef) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(baseUrl);
   }
 
   const ip =
@@ -25,5 +29,5 @@ export async function GET(
     [safeRef, ip, ua],
   ).catch(() => {});
 
-  return NextResponse.redirect(new URL("/", request.url));
+  return NextResponse.redirect(baseUrl);
 }
