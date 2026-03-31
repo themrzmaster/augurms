@@ -34,9 +34,45 @@ You are performing a scheduled game check.${isWeekend ? " It's the weekend — g
 If this is one of your first runs, focus on observation, goal-setting, and maybe creating a welcome event rather than changing any numbers.`;
 }
 
+// Auto-expire events that have passed their expires_at
+async function autoExpireEvents(): Promise<string[]> {
+  const expired: string[] = [];
+  try {
+    const events = await query<{ id: number; event_name: string; metadata: string }>(
+      "SELECT id, event_name, metadata FROM gm_events WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < NOW()"
+    );
+    for (const event of events) {
+      const meta = typeof event.metadata === "string" ? JSON.parse(event.metadata) : event.metadata;
+      if (meta?.plifeIds?.length) {
+        await execute(`DELETE FROM plife WHERE id IN (${meta.plifeIds.join(",")})`);
+      }
+      if (meta?.globalDropIds?.length) {
+        await execute(`DELETE FROM drop_data_global WHERE id IN (${meta.globalDropIds.join(",")})`);
+      }
+      if (meta?.mobDropIds?.length) {
+        await execute(`DELETE FROM drop_data WHERE id IN (${meta.mobDropIds.join(",")})`);
+      }
+      if (meta?.reactorIds?.length) {
+        await execute(`DELETE FROM preactor WHERE id IN (${meta.reactorIds.join(",")})`);
+      }
+      if (meta?.reactorDropIds?.length) {
+        for (const rd of meta.reactorDropIds) {
+          await execute("DELETE FROM reactordrops WHERE reactorid = ? AND itemid = ?", [rd.reactorId, rd.itemId]);
+        }
+      }
+      await execute("UPDATE gm_events SET status = 'expired' WHERE id = ?", [event.id]);
+      expired.push(event.event_name);
+    }
+  } catch { /* gm_events table may not exist */ }
+  return expired;
+}
+
 // POST /api/gm/cron — Run the autonomous cycle
 // Optional body: { prompt?: string } to override the default prompt
 export async function POST(request: NextRequest) {
+  // Auto-expire events that have passed their deadline
+  const expiredEvents = await autoExpireEvents();
+
   // Check if another session is already running
   // Auto-expire sessions stuck for more than 10 minutes
   await execute(
@@ -68,7 +104,10 @@ export async function POST(request: NextRequest) {
   let body: any = {};
   try { body = await request.json(); } catch { /* no body is fine */ }
 
-  const prompt = body.prompt || buildCronPrompt();
+  let prompt = body.prompt || buildCronPrompt();
+  if (expiredEvents.length > 0) {
+    prompt += `\n\n## Auto-Expired Events\nThe following events were automatically cleaned up because they passed their expiry time:\n${expiredEvents.map(e => `- ${e}`).join("\n")}\nTheir spawns, drops, and reactors have been removed.`;
+  }
   const trigger = body.trigger || "scheduled";
 
   // Collect results (non-streaming for cron)

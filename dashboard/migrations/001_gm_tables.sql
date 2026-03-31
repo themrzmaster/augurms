@@ -111,6 +111,19 @@ CREATE TABLE IF NOT EXISTS cheat_flags (
   INDEX idx_flagged (flagged_at)
 );
 
+-- Event tracking with auto-expiry (used by AI GM to manage event lifecycle)
+CREATE TABLE IF NOT EXISTS gm_events (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  event_name VARCHAR(255) NOT NULL,
+  event_type VARCHAR(50) DEFAULT 'general',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME,
+  status VARCHAR(20) DEFAULT 'active',
+  session_id VARCHAR(36),
+  metadata JSON,
+  INDEX (status, expires_at)
+);
+
 -- Persistent reactor spawns (loaded by game server on map init, like plife for mobs/NPCs)
 CREATE TABLE IF NOT EXISTS preactor (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

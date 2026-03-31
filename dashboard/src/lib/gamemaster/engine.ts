@@ -37,7 +37,7 @@ function inferCategory(toolName: string): "rates" | "mobs" | "drops" | "spawns" 
   if (toolName.includes("spawn") || toolName.includes("map")) return "spawns";
   if (toolName.includes("shop")) return "shops";
   if (toolName.includes("npc")) return "npcs";
-  if (toolName.includes("event")) return "events";
+  if (toolName.includes("event") || toolName.includes("treasure")) return "events";
   if (toolName.includes("config")) return "config";
   return "other";
 }
@@ -53,7 +53,7 @@ const WRITE_TOOLS = new Set([
   "add_shop_item", "update_shop_price", "remove_shop_item",
   "create_custom_npc", "update_custom_npc", "delete_custom_npc",
   "update_rates", "update_config",
-  "create_event", "cleanup_event",
+  "create_event", "cleanup_event", "create_treasure_hunt",
   "set_server_message",
   "create_goal", "update_goal",
   "publish_client_update",
@@ -241,6 +241,9 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
 
   cleanup_event: async (input) =>
     JSON.stringify(await api("/api/gm/event", { method: "DELETE", body: JSON.stringify(input) })),
+
+  create_treasure_hunt: async (input) =>
+    JSON.stringify(await api("/api/gm/treasure-hunt", { method: "POST", body: JSON.stringify(input) })),
 
   get_server_status: async () =>
     JSON.stringify(await api("/api/server")),
@@ -1122,7 +1125,7 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
     type: "function",
     function: {
       name: "create_event",
-      description: "Create a dynamic event combining mob spawns, bonus drops, and a server announcement. Mob spawns are added to the plife table (take effect on restart). Drop changes are live. Global drops (bonusDrops without mobId) drop from ALL mobs server-wide.",
+      description: "Create a dynamic event combining mob spawns, bonus drops, and a server announcement. Mob spawns are added to the plife table (take effect on restart). Drop changes are live. Global drops (bonusDrops without mobId) drop from ALL mobs server-wide. Events are tracked and can auto-expire.",
       parameters: {
         type: "object",
         properties: {
@@ -1159,6 +1162,7 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
             },
           },
           announcement: { type: "string", description: "Server announcement message shown to players on channel select" },
+          expiresInHours: { type: "number", description: "Hours until event auto-expires and all its content is cleaned up. Omit for no expiry." },
         },
         required: ["name"],
       },
@@ -1176,14 +1180,59 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
     type: "function",
     function: {
       name: "cleanup_event",
-      description: "Remove custom event content. Provide mapId to remove spawns from a specific map, mobId to remove a specific mob's spawns, and/or clearGlobalDrops to remove all event-tagged global drops.",
+      description: "Remove custom event content. Preferred: use eventId to clean up a tracked event precisely (removes all its spawns, drops, and reactors). Fallback: use mapId/mobId/clearGlobalDrops for manual cleanup.",
       parameters: {
         type: "object",
         properties: {
-          mapId: { type: "number", description: "Remove all custom spawns from this map" },
+          eventId: { type: "number", description: "ID of the tracked event to clean up (removes all associated content precisely)" },
+          mapId: { type: "number", description: "Remove all custom spawns from this map (legacy fallback)" },
           mobId: { type: "number", description: "Remove spawns of this specific mob (combine with mapId for precision)" },
           clearGlobalDrops: { type: "boolean", description: "Remove all global drops tagged as 'Event:*' (default false)" },
         },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_treasure_hunt",
+      description: "Create a treasure hunt event: place breakable reactor boxes across multiple maps with item rewards. Bundles reactor placement, drop configuration, announcement, and event tracking with auto-expiry. Reactors take effect on server restart.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Treasure hunt name" },
+          reactorId: { type: "number", description: "Reactor template ID to use (default: 2002000, a breakable box). Use search_reactors to find options." },
+          locations: {
+            type: "array",
+            description: "Maps to place reactors on",
+            items: {
+              type: "object",
+              properties: {
+                mapId: { type: "number", description: "Map ID" },
+                x: { type: "number", description: "X coordinate" },
+                y: { type: "number", description: "Y coordinate" },
+                count: { type: "number", description: "Number of reactors on this map (default 1, max 10)" },
+                reactorTime: { type: "number", description: "Respawn time in seconds (-1 = one-time break, 0 = instant respawn)" },
+              },
+              required: ["mapId"],
+            },
+          },
+          drops: {
+            type: "array",
+            description: "Items that drop when reactors are broken",
+            items: {
+              type: "object",
+              properties: {
+                itemId: { type: "number", description: "Item ID to drop" },
+                chance: { type: "number", description: "Drop chance 1-100 (default 50)" },
+              },
+              required: ["itemId"],
+            },
+          },
+          announcement: { type: "string", description: "Server announcement about the treasure hunt (ASCII only)" },
+          expiresInHours: { type: "number", description: "Hours until treasure hunt auto-expires and reactors are removed" },
+        },
+        required: ["name", "locations", "drops"],
       },
     },
   },
@@ -1378,11 +1427,19 @@ async function buildHistoricalContext(): Promise<string> {
       "SELECT map, rid, name, reactor_time FROM preactor ORDER BY map"
     ).catch(() => []);
 
+    let trackedEvents: any[] = [];
+    try {
+      trackedEvents = await dbQuery(
+        "SELECT id, event_name, event_type, created_at, expires_at FROM gm_events WHERE status = 'active' ORDER BY created_at DESC"
+      );
+    } catch { /* gm_events may not exist */ }
+
     const hasSpawns = (customSpawns as any[]).length > 0;
     const hasDrops = (globalDrops as any[]).length > 0;
     const hasReactors = (customReactors as any[]).length > 0;
+    const hasTracked = trackedEvents.length > 0;
 
-    if (hasSpawns || hasDrops || hasReactors) {
+    if (hasSpawns || hasDrops || hasReactors || hasTracked) {
       // Collect all map IDs for name resolution
       const allMapIds = new Set<number>();
       if (hasSpawns) for (const s of customSpawns as any[]) allMapIds.add(Number(s.map));
@@ -1458,6 +1515,15 @@ async function buildHistoricalContext(): Promise<string> {
           const warning = cat === "etc" ? " ⚠️ Etc item — players CANNOT open/use this, it just sits in inventory" : "";
           context += `- ${name} (${d.itemid}) [${cat}] at ${pct}% chance${d.comments ? ` [${d.comments}]` : ""}${warning}\n`;
         }
+      }
+
+      if (hasTracked) {
+        context += "\n### Tracked Events (with lifecycle)\n";
+        for (const e of trackedEvents) {
+          const expires = e.expires_at ? ` — expires ${e.expires_at} UTC` : " — no expiry set";
+          context += `- **${e.event_name}** (id: ${e.id}, ${e.event_type}) created ${e.created_at}${expires}\n`;
+        }
+        context += "Use `cleanup_event({ eventId })` to precisely remove a tracked event and all its content.\n";
       }
 
       context += "\nIf any of these are from past events that should have ended, clean them up with cleanup_event.\n";
@@ -1741,8 +1807,22 @@ NX (also called NX Cash or NX Credit) is the Cash Shop currency. Players use NX 
 ### IMPORTANT — NX Cards vs give_item_to_character
 Do NOT use \`give_item_to_character\` with NX card item IDs (4031865, 4031866). That puts the card in inventory as a regular Etc item that CANNOT be redeemed. Instead, use \`grant_nx\` to add NX directly, or \`spawn_drop\` to drop NX cards on the ground (they auto-convert on pickup).
 
+## Treasure Hunts — One-Click Multi-Map Events
+Use \`create_treasure_hunt\` to place breakable reactor boxes across multiple maps in one call. It handles reactor placement, drop configuration, announcement, and event tracking with auto-expiry.
+
+Example: \`create_treasure_hunt({ name: "Weekend Loot Hunt", reactorId: 2002000, locations: [{ mapId: 100000000, x: 50, y: 0, count: 3 }, { mapId: 101000000, x: -100, y: 0, count: 2 }], drops: [{ itemId: 2000005, chance: 60 }, { itemId: 4031865, chance: 20 }], announcement: "Treasure boxes have appeared across Maple World! Break them for loot!", expiresInHours: 24 })\`
+
+This creates a tracked event that auto-cleans up after 24 hours — no manual cleanup needed.
+
+## Event Lifecycle & Auto-Expiry
+All events created with \`create_event\` or \`create_treasure_hunt\` are tracked in \`gm_events\` with their content (spawns, drops, reactors).
+- Set \`expiresInHours\` to auto-clean an event after a duration — spawns, drops, and reactors are removed automatically on the next cron cycle.
+- Use \`cleanup_event({ eventId })\` to precisely remove a tracked event and all its associated content.
+- Events without expiry persist until manually cleaned.
+- Prefer setting expiry on all events to prevent stale content buildup.
+
 ## Reactor Events — Your Secret Weapon
-You can place breakable objects (reactors) on maps that drop items when players hit them. This is incredibly engaging:
+For fine-grained control (or if you want reactors without a full treasure hunt), you can manage reactors individually:
 - Search for reactor templates with \`search_reactors\` (eggs, boxes, plants, crystals, chests — 421 options)
 - Place them on maps with \`add_map_reactor\`
 - Configure their drops with \`add_reactor_drop\`
@@ -1959,7 +2039,9 @@ function summarizeToolCall(name: string, input: Record<string, any>): string {
       case "set_server_message":
         return `"${(input.message || "").slice(0, 60)}"`;
       case "cleanup_event":
-        return `${input.mapId ? `map ${input.mapId}` : ""}${input.clearGlobalDrops ? " + global drops" : ""}`;
+        return `${input.eventId ? `event #${input.eventId}` : ""}${input.mapId ? `map ${input.mapId}` : ""}${input.clearGlobalDrops ? " + global drops" : ""}`;
+      case "create_treasure_hunt":
+        return `"${input.name || "unnamed"}" across ${input.locations?.length || 0} maps, ${input.drops?.length || 0} items${input.expiresInHours ? `, expires in ${input.expiresInHours}h` : ""}`;
       case "create_goal":
         return `"${(input.goal || "").slice(0, 60)}"`;
       case "update_goal":
