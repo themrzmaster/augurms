@@ -3198,7 +3198,11 @@ public class MapleMap {
             if (portal.getType() == Portal.HIDDEN_PORTAL
                     && portal.getTargetMapId() != MapId.NONE
                     && portal.getPortalStatus()) {
-                if (portal.getPosition().distanceSq(chr.getPosition()) <= 10000) {
+                double dist = portal.getPosition().distanceSq(chr.getPosition());
+                if (dist <= 250000) {
+                    log.info("Auto-portal '{}' on map {}: chr={} pos={} portalPos={} dist={}",
+                            portal.getName(), mapid, chr.getName(), chr.getPosition(),
+                            portal.getPosition(), dist);
                     chr.portalDelay(1000);
                     portal.enterPortal(chr.getClient());
                     return;
