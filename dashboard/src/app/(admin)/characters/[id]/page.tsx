@@ -365,7 +365,7 @@ export default function CharacterDetailPage() {
             <div className="space-y-2">
               {[
                 { level: 0, label: "Player", desc: "Normal player", color: "border-border bg-bg-secondary text-text-secondary" },
-                { level: 1, label: "Moderator", desc: "@ban, @unban, @dc, @goto", color: "border-accent-blue/30 bg-accent-blue/5 text-accent-blue" },
+                { level: 1, label: "Moderator", desc: "@ban, @unban, @dc, @goto, @hide", color: "border-accent-blue/30 bg-accent-blue/5 text-accent-blue" },
                 { level: 2, label: "GM", desc: "@warp, @item, @jail, @heal, @job", color: "border-accent-purple/30 bg-accent-purple/5 text-accent-purple" },
                 { level: 3, label: "Senior GM", desc: "@spawn, @fame, @givenx, @fly", color: "border-accent-gold/30 bg-accent-gold/5 text-accent-gold" },
                 { level: 6, label: "Admin", desc: "Full access", color: "border-accent-red/30 bg-accent-red/5 text-accent-red" },

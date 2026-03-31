@@ -12,12 +12,21 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * @author kevintjuh93
  */
 public class AutobanManager {
     private static final Logger log = LoggerFactory.getLogger(AutobanManager.class);
+
+    // These violations are too noisy to flag to DB — log only
+    private static final Set<AutobanFactory> SKIP_FLAG = Set.of(
+        AutobanFactory.FAST_HP_HEALING,
+        AutobanFactory.FAST_MP_HEALING,
+        AutobanFactory.HIGH_HP_HEALING,
+        AutobanFactory.GACHA_EXP
+    );
 
     private final Character chr;
     private final Map<AutobanFactory, Integer> points = new HashMap<>();
@@ -56,11 +65,13 @@ public class AutobanManager {
             }
 
             if (points.get(fac) >= fac.getMaximum()) {
-                flagCheat(fac.name(), reason, "threshold", points.get(fac));
+                if (!SKIP_FLAG.contains(fac)) {
+                    flagCheat(fac.name(), reason, "threshold", points.get(fac));
+                }
                 points.put(fac, 0); // reset so it can flag again if they keep going
             }
         }
-        if (YamlConfig.config.server.USE_AUTOBAN_LOG) {
+        if (YamlConfig.config.server.USE_AUTOBAN_LOG && !SKIP_FLAG.contains(fac)) {
             log.info("Autoban - chr {} caused {} {}", Character.makeMapleReadable(chr.getName()), fac.name(), reason);
         }
     }
@@ -116,7 +127,9 @@ public class AutobanManager {
         if (this.timestamp[type] == time) {
             this.timestampcounter[type]++;
             if (this.timestampcounter[type] >= times) {
-                flagCheat("SPAM_TYPE_" + type, "Repeated timestamp " + time + " for type " + type, "spam", this.timestampcounter[type]);
+                if (type != 8 && type != 9) { // skip heal spam — too noisy
+                    flagCheat("SPAM_TYPE_" + type, "Repeated timestamp " + time + " for type " + type, "spam", this.timestampcounter[type]);
+                }
                 this.timestampcounter[type] = 0; // reset counter after flagging
 
                 log.info("Autoban - Chr {} was caught spamming TYPE {}", chr, type);

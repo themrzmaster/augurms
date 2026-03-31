@@ -386,6 +386,8 @@ public class CommandsExecutor {
         addCommand("dc", 1, DcCommand.class);
         addCommand("ban", 1, BanCommand.class);
         addCommand("unban", 1, UnBanCommand.class);
+        addCommand("hide", 1, HideCommand.class);
+        addCommand("unhide", 1, UnHideCommand.class);
 
         commandsNameDesc.add(levelCommandsCursor);
     }
@@ -396,8 +398,7 @@ public class CommandsExecutor {
 
         addCommand("recharge", 2, RechargeCommand.class);
         addCommand("whereami", 2, WhereaMiCommand.class);
-        addCommand("hide", 2, HideCommand.class);
-        addCommand("unhide", 2, UnHideCommand.class);
+        // hide/unhide moved to lv1 (moderator)
         addCommand("sp", 2, SpCommand.class);
         addCommand("ap", 2, ApCommand.class);
         addCommand("empowerme", 2, EmpowerMeCommand.class);
