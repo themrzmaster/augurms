@@ -3182,6 +3182,31 @@ public class MapleMap {
         }
     }
 
+    /**
+     * Server-side collision check for type 3 (hidden auto-enter) portals.
+     * The v83 client does not detect these while climbing ropes/ladders,
+     * so the server checks on each movement update.
+     */
+    public void checkAutoPortalCollisions(Character chr) {
+        if (chr.isChangingMaps() || !chr.isAlive()) {
+            return;
+        }
+        if (chr.portalDelay() > Server.getInstance().getCurrentTime()) {
+            return;
+        }
+        for (Portal portal : portals.values()) {
+            if (portal.getType() == Portal.HIDDEN_PORTAL
+                    && portal.getTargetMapId() != MapId.NONE
+                    && portal.getPortalStatus()) {
+                if (portal.getPosition().distanceSq(chr.getPosition()) <= 10000) {
+                    chr.portalDelay(1000);
+                    portal.enterPortal(chr.getClient());
+                    return;
+                }
+            }
+        }
+    }
+
     public final void toggleEnvironment(final String ms) {
         Map<String, Integer> env = getEnvironment();
 

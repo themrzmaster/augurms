@@ -28,6 +28,7 @@ import java.awt.*;
 public interface Portal {
     int TELEPORT_PORTAL = 1;
     int MAP_PORTAL = 2;
+    int HIDDEN_PORTAL = 3;
     int DOOR_PORTAL = 6;
     boolean OPEN = true;
     boolean CLOSED = false;
