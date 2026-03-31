@@ -3029,6 +3029,9 @@ public class MapleMap {
      */
     public void addMonsterSpawn(Monster monster, int mobTime, int team) {
         Point newpos = calcPointBelow(monster.getPosition());
+        if (newpos == null) {
+            newpos = new Point(monster.getPosition());
+        }
         newpos.y -= 1;
         SpawnPoint sp = new SpawnPoint(monster, newpos, !monster.isMobile(), mobTime, mobInterval, team);
         monsterSpawn.add(sp);
@@ -3198,11 +3201,7 @@ public class MapleMap {
             if (portal.getType() == Portal.HIDDEN_PORTAL
                     && portal.getTargetMapId() != MapId.NONE
                     && portal.getPortalStatus()) {
-                double dist = portal.getPosition().distanceSq(chr.getPosition());
-                if (dist <= 250000) {
-                    log.info("Auto-portal '{}' on map {}: chr={} pos={} portalPos={} dist={}",
-                            portal.getName(), mapid, chr.getName(), chr.getPosition(),
-                            portal.getPosition(), dist);
+                if (portal.getPosition().distanceSq(chr.getPosition()) <= 10000) {
                     chr.portalDelay(1000);
                     portal.enterPortal(chr.getClient());
                     return;
