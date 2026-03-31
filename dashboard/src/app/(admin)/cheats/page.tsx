@@ -2,6 +2,24 @@
 
 import { useState, useEffect } from "react";
 
+interface PlayerSummary {
+  account_id: number;
+  character_name: string;
+  total_flags: number;
+  unreviewed_flags: number;
+  violation_types: string;
+  first_flagged: string;
+  last_flagged: string;
+  unique_maps: number;
+  latest_verdict: string | null;
+}
+
+interface ViolationSummary {
+  violation_type: string;
+  cnt: number;
+  players: number;
+}
+
 interface CheatFlag {
   id: number;
   character_id: number;
@@ -13,25 +31,10 @@ interface CheatFlag {
   points: number;
   map_id: number;
   reviewed: number;
-  reviewed_at: string | null;
   review_result: string | null;
   review_notes: string | null;
   flagged_at: string;
 }
-
-interface CheatSummary {
-  account_id: number;
-  character_name: string;
-  flag_count: number;
-  violation_types: string;
-  last_flagged: string;
-}
-
-const SEVERITY_COLORS: Record<string, string> = {
-  threshold: "bg-accent-orange/10 text-accent-orange",
-  godmode: "bg-accent-red/10 text-accent-red",
-  spam: "bg-accent-gold/10 text-accent-gold",
-};
 
 const RESULT_COLORS: Record<string, string> = {
   innocent: "bg-accent-green/10 text-accent-green",
@@ -40,169 +43,106 @@ const RESULT_COLORS: Record<string, string> = {
 };
 
 export default function CheatsPage() {
-  const [flags, setFlags] = useState<CheatFlag[]>([]);
-  const [summary, setSummary] = useState<CheatSummary[]>([]);
+  const [players, setPlayers] = useState<PlayerSummary[]>([]);
+  const [violations, setViolations] = useState<ViolationSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"unreviewed" | "reviewed" | "all">("unreviewed");
-  const [selected, setSelected] = useState<Set<number>>(new Set());
 
-  async function fetchFlags() {
+  // Expanded player detail
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [detail, setDetail] = useState<CheatFlag[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  async function fetchPlayers() {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (filter === "unreviewed") params.set("reviewed", "0");
-      else if (filter === "reviewed") params.set("reviewed", "1");
-      params.set("limit", "100");
-
-      const res = await fetch(`/api/gm/cheats?${params}`);
+      const res = await fetch("/api/gm/cheats");
       const data = await res.json();
-      setFlags(data.flags || []);
-      setSummary(data.summary || []);
+      setPlayers(data.players || []);
+      setViolations(data.violations || []);
     } catch {
-      setFlags([]);
+      setPlayers([]);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    fetchFlags();
-  }, [filter]);
+  useEffect(() => { fetchPlayers(); }, []);
 
-  function toggleSelect(id: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function selectAll() {
-    if (selected.size === flags.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(flags.map((f) => f.id)));
+  async function expandPlayer(accountId: number) {
+    if (expanded === accountId) {
+      setExpanded(null);
+      setDetail([]);
+      return;
+    }
+    setExpanded(accountId);
+    setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/gm/cheats?account_id=${accountId}`);
+      const data = await res.json();
+      setDetail(data.flags || []);
+    } catch {
+      setDetail([]);
+    } finally {
+      setDetailLoading(false);
     }
   }
 
-  async function reviewSelected(result: "innocent" | "warning" | "ban") {
-    if (selected.size === 0) return;
-    const notes = prompt(`Notes for marking ${selected.size} flag(s) as "${result}":`);
+  async function reviewPlayer(accountId: number, result: "innocent" | "warning" | "ban") {
+    const notes = prompt(`Notes for marking all flags as "${result}":`);
     if (notes === null) return;
 
     await fetch("/api/gm/cheats", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        flag_ids: Array.from(selected),
-        result,
-        notes: notes || `Marked as ${result} by admin`,
-      }),
+      body: JSON.stringify({ account_id: accountId, result, notes: notes || `Marked as ${result} by admin` }),
     });
-    setSelected(new Set());
-    fetchFlags();
+    setExpanded(null);
+    fetchPlayers();
   }
 
-  const unreviewedCount = summary.reduce((sum, s) => sum + s.flag_count, 0);
+  const totalUnreviewed = players.reduce((sum, p) => sum + Number(p.unreviewed_flags), 0);
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-text-primary">Cheat Flags</h1>
         <p className="mt-1.5 text-text-secondary">
-          {unreviewedCount > 0
-            ? `${unreviewedCount} unreviewed flag${unreviewedCount !== 1 ? "s" : ""} across ${summary.length} player${summary.length !== 1 ? "s" : ""}`
+          {totalUnreviewed > 0
+            ? `${totalUnreviewed.toLocaleString()} unreviewed flags across ${players.filter(p => p.unreviewed_flags > 0).length} player${players.filter(p => p.unreviewed_flags > 0).length !== 1 ? "s" : ""}`
             : "No unreviewed flags"}
         </p>
       </div>
 
-      {/* Summary cards */}
-      {summary.length > 0 && filter === "unreviewed" && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {summary.map((s) => (
+      {/* Violation type breakdown */}
+      {violations.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {violations.map((v) => (
             <div
-              key={`${s.account_id}-${s.character_name}`}
-              className="rounded-xl border border-border bg-bg-card p-4"
+              key={v.violation_type}
+              className="rounded-lg border border-border bg-bg-card px-3 py-2 text-xs"
             >
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-text-primary">{s.character_name}</span>
-                <span className="rounded-full bg-accent-red/10 px-2 py-0.5 text-xs font-bold text-accent-red">
-                  {s.flag_count}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-text-muted">Account #{s.account_id}</p>
-              <p className="mt-2 text-xs text-text-secondary">{s.violation_types}</p>
-              <p className="mt-1 text-xs text-text-muted">
-                Last: {new Date(s.last_flagged).toLocaleString()}
-              </p>
+              <span className="font-mono font-medium text-text-primary">{v.violation_type}</span>
+              <span className="ml-2 text-text-muted">
+                {v.cnt.toLocaleString()} flags / {v.players} player{v.players !== 1 ? "s" : ""}
+              </span>
             </div>
           ))}
         </div>
       )}
 
-      {/* Filter tabs + bulk actions */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex rounded-lg border border-border bg-bg-secondary/50 p-0.5">
-          {(["unreviewed", "reviewed", "all"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                filter === f
-                  ? "bg-bg-card text-text-primary shadow-sm"
-                  : "text-text-muted hover:text-text-secondary"
-              }`}
-            >
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        {selected.size > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-text-muted">{selected.size} selected:</span>
-            <button
-              onClick={() => reviewSelected("innocent")}
-              className="rounded-lg bg-accent-green/10 px-3 py-1.5 text-xs font-medium text-accent-green hover:bg-accent-green/20 transition"
-            >
-              Innocent
-            </button>
-            <button
-              onClick={() => reviewSelected("warning")}
-              className="rounded-lg bg-accent-orange/10 px-3 py-1.5 text-xs font-medium text-accent-orange hover:bg-accent-orange/20 transition"
-            >
-              Warning
-            </button>
-            <button
-              onClick={() => reviewSelected("ban")}
-              className="rounded-lg bg-accent-red/10 px-3 py-1.5 text-xs font-medium text-accent-red hover:bg-accent-red/20 transition"
-            >
-              Ban
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Table */}
+      {/* Player table */}
       {loading ? (
         <div className="rounded-xl border border-border bg-bg-card p-8 animate-pulse">
           <div className="space-y-4">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-12 rounded bg-bg-card-hover" />
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-14 rounded bg-bg-card-hover" />
             ))}
           </div>
         </div>
-      ) : flags.length === 0 ? (
+      ) : players.length === 0 ? (
         <div className="rounded-xl border border-border bg-bg-card p-12 text-center">
-          <span className="text-4xl mb-4 block">
-            {filter === "unreviewed" ? "✅" : "🚩"}
-          </span>
-          <p className="text-text-secondary">
-            {filter === "unreviewed"
-              ? "All clear — no unreviewed cheat flags."
-              : "No flags found."}
-          </p>
+          <span className="text-4xl mb-4 block">✅</span>
+          <p className="text-text-secondary">No cheat flags recorded yet.</p>
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-bg-card overflow-hidden">
@@ -210,103 +150,165 @@ export default function CheatsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-bg-secondary/50 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">
-                  <th className="px-4 py-3 w-8">
-                    <input
-                      type="checkbox"
-                      checked={selected.size === flags.length && flags.length > 0}
-                      onChange={selectAll}
-                      className="rounded border-border"
-                    />
-                  </th>
                   <th className="px-4 py-3">Player</th>
-                  <th className="px-4 py-3">Violation</th>
-                  <th className="px-4 py-3">Details</th>
-                  <th className="px-4 py-3">Severity</th>
-                  <th className="px-4 py-3">Map</th>
-                  <th className="px-4 py-3">When</th>
-                  {filter !== "unreviewed" && <th className="px-4 py-3">Verdict</th>}
+                  <th className="px-4 py-3">Violations</th>
+                  <th className="px-4 py-3 text-right">Flags</th>
+                  <th className="px-4 py-3 text-right">Unreviewed</th>
+                  <th className="px-4 py-3">Maps</th>
+                  <th className="px-4 py-3">First Seen</th>
+                  <th className="px-4 py-3">Last Seen</th>
+                  <th className="px-4 py-3">Verdict</th>
+                  <th className="px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {flags.map((flag) => (
-                  <tr
-                    key={flag.id}
-                    className={`transition hover:bg-bg-card-hover ${
-                      selected.has(flag.id) ? "bg-accent-gold/5" : ""
-                    }`}
-                  >
-                    <td className="px-4 py-3">
-                      {!flag.reviewed && (
-                        <input
-                          type="checkbox"
-                          checked={selected.has(flag.id)}
-                          onChange={() => toggleSelect(flag.id)}
-                          className="rounded border-border"
-                        />
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div>
-                        <span className="font-semibold text-text-primary">
-                          {flag.character_name}
-                        </span>
-                        <p className="text-xs text-text-muted">
-                          Acc #{flag.account_id}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-xs text-text-secondary">
-                        {flag.violation_type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 max-w-xs">
-                      <p className="text-xs text-text-secondary truncate" title={flag.details}>
-                        {flag.details}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                          SEVERITY_COLORS[flag.severity] || "bg-bg-tertiary text-text-muted"
-                        }`}
-                      >
-                        {flag.severity}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-text-muted">
-                      {flag.map_id || "-"}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-text-muted whitespace-nowrap">
-                      {new Date(flag.flagged_at).toLocaleString()}
-                    </td>
-                    {filter !== "unreviewed" && (
+                {players.map((p) => (
+                  <>
+                    <tr
+                      key={p.account_id}
+                      onClick={() => expandPlayer(p.account_id)}
+                      className={`transition cursor-pointer hover:bg-bg-card-hover ${
+                        expanded === p.account_id ? "bg-bg-card-hover" : ""
+                      }`}
+                    >
                       <td className="px-4 py-3">
-                        {flag.review_result ? (
-                          <div>
+                        <div>
+                          <span className="font-semibold text-text-primary">{p.character_name}</span>
+                          <p className="text-xs text-text-muted">Account #{p.account_id}</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {p.violation_types.split(",").map((v) => (
                             <span
-                              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                                RESULT_COLORS[flag.review_result] ||
-                                "bg-bg-tertiary text-text-muted"
-                              }`}
+                              key={v}
+                              className="rounded bg-bg-tertiary px-1.5 py-0.5 font-mono text-xs text-text-secondary"
                             >
-                              {flag.review_result}
+                              {v}
                             </span>
-                            {flag.review_notes && (
-                              <p
-                                className="mt-1 text-xs text-text-muted truncate max-w-[200px]"
-                                title={flag.review_notes}
-                              >
-                                {flag.review_notes}
-                              </p>
-                            )}
-                          </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-text-secondary">
+                        {Number(p.total_flags).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {Number(p.unreviewed_flags) > 0 ? (
+                          <span className="rounded-full bg-accent-red/10 px-2 py-0.5 text-xs font-bold text-accent-red">
+                            {Number(p.unreviewed_flags).toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="text-text-muted text-xs">0</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-text-muted">
+                        {p.unique_maps}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-text-muted whitespace-nowrap">
+                        {new Date(p.first_flagged).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-text-muted whitespace-nowrap">
+                        {new Date(p.last_flagged).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3">
+                        {p.latest_verdict ? (
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                              RESULT_COLORS[p.latest_verdict] || "bg-bg-tertiary text-text-muted"
+                            }`}
+                          >
+                            {p.latest_verdict}
+                          </span>
                         ) : (
                           <span className="text-text-muted text-xs">-</span>
                         )}
                       </td>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        {Number(p.unreviewed_flags) > 0 && (
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => reviewPlayer(p.account_id, "innocent")}
+                              className="rounded px-2 py-1 text-xs font-medium bg-accent-green/10 text-accent-green hover:bg-accent-green/20 transition"
+                            >
+                              Innocent
+                            </button>
+                            <button
+                              onClick={() => reviewPlayer(p.account_id, "warning")}
+                              className="rounded px-2 py-1 text-xs font-medium bg-accent-orange/10 text-accent-orange hover:bg-accent-orange/20 transition"
+                            >
+                              Warn
+                            </button>
+                            <button
+                              onClick={() => reviewPlayer(p.account_id, "ban")}
+                              className="rounded px-2 py-1 text-xs font-medium bg-accent-red/10 text-accent-red hover:bg-accent-red/20 transition"
+                            >
+                              Ban
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* Expanded detail rows */}
+                    {expanded === p.account_id && (
+                      <tr key={`${p.account_id}-detail`}>
+                        <td colSpan={9} className="bg-bg-secondary/30 px-4 py-3">
+                          {detailLoading ? (
+                            <div className="animate-pulse py-4 text-center text-text-muted text-xs">
+                              Loading flags...
+                            </div>
+                          ) : detail.length === 0 ? (
+                            <p className="py-4 text-center text-text-muted text-xs">No flags found.</p>
+                          ) : (
+                            <div className="max-h-80 overflow-y-auto">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-left text-text-muted uppercase tracking-wider">
+                                    <th className="px-3 py-2">Type</th>
+                                    <th className="px-3 py-2">Details</th>
+                                    <th className="px-3 py-2">Map</th>
+                                    <th className="px-3 py-2">When</th>
+                                    <th className="px-3 py-2">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/50">
+                                  {detail.map((f) => (
+                                    <tr key={f.id} className="hover:bg-bg-card-hover/50">
+                                      <td className="px-3 py-2 font-mono text-text-secondary">
+                                        {f.violation_type}
+                                      </td>
+                                      <td className="px-3 py-2 max-w-md text-text-secondary truncate" title={f.details}>
+                                        {f.details}
+                                      </td>
+                                      <td className="px-3 py-2 font-mono text-text-muted">
+                                        {f.map_id || "-"}
+                                      </td>
+                                      <td className="px-3 py-2 text-text-muted whitespace-nowrap">
+                                        {new Date(f.flagged_at).toLocaleString()}
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        {f.review_result ? (
+                                          <span
+                                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                                              RESULT_COLORS[f.review_result] || "bg-bg-tertiary text-text-muted"
+                                            }`}
+                                          >
+                                            {f.review_result}
+                                          </span>
+                                        ) : (
+                                          <span className="text-accent-orange">pending</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
                     )}
-                  </tr>
+                  </>
                 ))}
               </tbody>
             </table>
