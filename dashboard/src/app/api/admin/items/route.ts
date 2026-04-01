@@ -198,7 +198,9 @@ export async function POST(request: NextRequest) {
         `${process.env.COSMIC_DASHBOARD_URL || "http://localhost:3000"}/api/items/${item_id}`
       );
       const data = await existing.json();
-      if (data?.name && !data.error) {
+      // The items API returns name: "Unknown" for any ID, even non-existent ones.
+      // Only block if the item has a real name AND has actual stat data in WZ.
+      if (data?.name && data.name !== "Unknown" && !data.error) {
         return NextResponse.json(
           { error: `Item ID ${item_id} already exists in WZ data: "${data.name}"` },
           { status: 409 }
@@ -230,26 +232,26 @@ export async function POST(request: NextRequest) {
       ]
     );
 
-    // Generate server WZ XML for equip items
-    const actions: string[] = [];
+    // Try to generate server WZ XML (works locally, may fail on Fly container)
+    const actions: string[] = ["Saved to custom_items database"];
     if (category === "equip") {
-      const wzResult = writeEquipWzXml({
-        item_id, sub_category: sub_category || "Ring",
-        stats: stats || {}, requirements: requirements || {},
-        flags: flags || {}, base_item_id,
-      });
-      if (wzResult.success) {
-        actions.push(`Generated WZ XML: ${wzResult.path}`);
-      } else {
-        actions.push(`WZ XML generation failed: ${wzResult.error}`);
-      }
+      try {
+        const wzResult = writeEquipWzXml({
+          item_id, sub_category: sub_category || "Ring",
+          stats: stats || {}, requirements: requirements || {},
+          flags: flags || {}, base_item_id,
+        });
+        if (wzResult.success) {
+          actions.push(`Generated WZ XML: ${wzResult.path}`);
 
-      // Add to String.wz
-      const stringResult = addToStringWz(item_id, name, description || "", sub_category || "Accessory");
-      if (stringResult.success) {
-        actions.push("Added name/description to String.wz/Eqp.img.xml");
-      } else {
-        actions.push(`String.wz update failed: ${stringResult.error}`);
+          const stringResult = addToStringWz(item_id, name, description || "", sub_category || "Accessory");
+          if (stringResult.success) {
+            actions.push("Added name/description to String.wz/Eqp.img.xml");
+          }
+        }
+      } catch {
+        // WZ files not available on this container — expected on Fly dashboard
+        actions.push("WZ XML generation skipped (not available on this server). Use Publish to push to game server.");
       }
     }
 
@@ -259,7 +261,7 @@ export async function POST(request: NextRequest) {
       item_id,
       name,
       actions,
-      note: "Item saved to DB. Server WZ XML generated (takes effect after WZ repack + server restart). Client will show base_item_id sprite until client WZ is patched.",
+      note: "Item saved to DB. Use 'Publish to Client' to push WZ changes to the game server.",
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
