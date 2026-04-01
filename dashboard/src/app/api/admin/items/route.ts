@@ -32,7 +32,6 @@ const STAT_FIELDS: Record<string, string> = {
   watk: "incPAD", matk: "incMAD", wdef: "incPDD", mdef: "incMDD",
   acc: "incACC", avoid: "incEVA",
   speed: "incSpeed", jump: "incJump",
-  slots: "tuc",
 };
 
 function padItemId(id: number): string {
@@ -79,6 +78,8 @@ function generateEquipXml(item: {
   xml += `    <int name="reqINT" value="${reqs.int ?? 0}"/>\n`;
   xml += `    <int name="reqLUK" value="${reqs.luk ?? 0}"/>\n`;
   xml += `    <int name="cash" value="${flags.cash ? 1 : 0}"/>\n`;
+  xml += `    <int name="slotMax" value="${stats.slots ?? 0}"/>\n`;
+  if (stats.slots) xml += `    <int name="tuc" value="${stats.slots}"/>\n`;
 
   if (flags.tradeBlock) xml += `    <int name="tradeBlock" value="1"/>\n`;
   if (flags.only) xml += `    <int name="only" value="1"/>\n`;
@@ -119,6 +120,15 @@ function writeEquipWzXml(item: {
   }
 }
 
+// Map sub_category to String.wz section name (must match server's ItemInformationProvider)
+const STRING_SECTIONS: Record<string, string> = {
+  Ring: "Ring", Pendant: "Accessory", Face: "Accessory", Eye: "Accessory",
+  Earring: "Accessory", Belt: "Accessory", Medal: "Accessory",
+  Cap: "Cap", Coat: "Top", Longcoat: "Overall", Pants: "Bottom",
+  Shoes: "Shoes", Glove: "Glove", Shield: "Shield", Cape: "Cape",
+  Weapon: "Weapon",
+};
+
 function addToStringWz(itemId: number, name: string, desc: string, subCategory: string): { success: boolean; error?: string } {
   try {
     const stringPath = join(WZ_ROOT, "String.wz", "Eqp.img.xml");
@@ -131,15 +141,16 @@ function addToStringWz(itemId: number, name: string, desc: string, subCategory: 
       return { success: true }; // Already exists
     }
 
+    // Determine the correct section (Ring items go in "Ring", not "Accessory")
+    const sectionName = STRING_SECTIONS[subCategory] || "Accessory";
+
     // Build the new entry
     const entry = `      <imgdir name="${itemId}">\n        <string name="name" value="${escapeXml(name)}"/>\n        <string name="desc" value="${escapeXml(desc)}"/>\n      </imgdir>`;
 
-    // Find the Accessory section opening tag and insert before its closing </imgdir>
-    // Strategy: find `<imgdir name="Accessory">`, then find the FIRST `    </imgdir>`
-    // that closes it (4-space indent = section-level closing tag)
-    const sectionOpen = content.indexOf('<imgdir name="Accessory">');
+    // Find the section and insert before its closing tag
+    const sectionOpen = content.indexOf(`<imgdir name="${sectionName}">`);
     if (sectionOpen === -1) {
-      return { success: false, error: 'Accessory section not found in Eqp.img.xml' };
+      return { success: false, error: `Section "${sectionName}" not found in Eqp.img.xml` };
     }
 
     // Find the section-level closing tag (4-space indented) after the section opens
@@ -147,7 +158,7 @@ function addToStringWz(itemId: number, name: string, desc: string, subCategory: 
     sectionCloseRegex.lastIndex = sectionOpen;
     const closeMatch = sectionCloseRegex.exec(content);
     if (!closeMatch) {
-      return { success: false, error: 'Could not find closing tag for Accessory section' };
+      return { success: false, error: `Could not find closing tag for ${sectionName} section` };
     }
 
     // Insert the new entry just before the closing tag
