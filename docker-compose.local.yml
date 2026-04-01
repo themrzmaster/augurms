@@ -1,0 +1,35 @@
+# Local dev setup — game server + MySQL
+# Usage: docker compose -f docker-compose.local.yml up --build
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: testpass
+      MYSQL_DATABASE: cosmic
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ptestpass"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.local
+    ports:
+      - "8484:8484"
+      - "7575:7575"
+      - "7576:7576"
+      - "7577:7577"
+    environment:
+      DB_PASS: testpass
+      DB_HOST: db
+      GAME_HOST: 192.168.0.127
+    volumes:
+      # Mount local WZ files (includes our custom items)
+      - ./server/wz:/opt/server/wz
+    depends_on:
+      db:
+        condition: service_healthy

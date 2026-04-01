@@ -1,0 +1,1425 @@
+import {
+  openSync,
+  readSync,
+  writeSync,
+  closeSync,
+  fstatSync,
+  unlinkSync,
+} from "fs";
+import { deflateSync } from "zlib";
+import { PNG } from "pngjs";
+import {
+  GMS_IV,
+  ZERO_IV,
+  WZ_OFFSET_CONSTANT,
+  generateKeyStream,
+  computeVersionHash,
+  rotateLeft32,
+} from "./crypto";
+
+// ---------- Types ----------
+
+export interface WzHeader {
+  ident: string;
+  fsize: number;
+  fstart: number;
+  copyright: string;
+}
+
+export interface WzEntry {
+  type: "dir" | "img";
+  name: string;
+  blockSize: number;
+  checksum: number;
+  offset: number;
+  children?: WzEntry[];
+  /** For existing images: offset in original file to byte-copy */
+  originalOffset?: number;
+  /** For new images: pre-serialized .img binary data */
+  data?: Buffer;
+}
+
+export interface WzFileInfo {
+  header: WzHeader;
+  version: number;
+  versionHash: number;
+  keyStream: Buffer;
+  iv: Buffer;
+  root: WzEntry[];
+  filePath: string;
+}
+
+// ---------- Binary Reader ----------
+
+class WzReader {
+  private buf: Buffer;
+  public pos: number;
+  private ks: Buffer;
+  private hash: number;
+  private fstart: number;
+  /** Absolute file offset where this buffer starts */
+  private fileBase: number;
+
+  constructor(
+    buf: Buffer,
+    keyStream: Buffer,
+    versionHash: number,
+    fstart: number,
+    startPos = 0,
+    fileBaseOffset = 0
+  ) {
+    this.buf = buf;
+    this.ks = keyStream;
+    this.hash = versionHash;
+    this.fstart = fstart;
+    this.pos = startPos;
+    this.fileBase = fileBaseOffset;
+  }
+
+  readByte(): number {
+    return this.buf[this.pos++];
+  }
+  readInt8(): number {
+    const v = this.buf.readInt8(this.pos);
+    this.pos += 1;
+    return v;
+  }
+  readInt16(): number {
+    const v = this.buf.readInt16LE(this.pos);
+    this.pos += 2;
+    return v;
+  }
+  readInt32(): number {
+    const v = this.buf.readInt32LE(this.pos);
+    this.pos += 4;
+    return v;
+  }
+  readUInt32(): number {
+    const v = this.buf.readUInt32LE(this.pos);
+    this.pos += 4;
+    return v;
+  }
+
+  readCompressedInt(): number {
+    const sb = this.readInt8();
+    return sb === -128 ? this.readInt32() : sb;
+  }
+
+  readWzString(): string {
+    const smallLen = this.readInt8();
+    if (smallLen === 0) return "";
+
+    if (smallLen > 0) {
+      // Unicode
+      const len = smallLen === 127 ? this.readInt32() : smallLen;
+      let mask = 0xaaaa;
+      const chars: number[] = [];
+      for (let i = 0; i < len; i++) {
+        let ch = this.buf.readUInt16LE(this.pos);
+        this.pos += 2;
+        ch ^=
+          ((this.ks[i * 2 + 1] || 0) << 8) | (this.ks[i * 2] || 0);
+        ch ^= mask++;
+        chars.push(ch);
+      }
+      return String.fromCharCode(...chars);
+    } else {
+      // ASCII
+      const len = smallLen === -128 ? this.readInt32() : -smallLen;
+      let mask = 0xaa;
+      const bytes: number[] = [];
+      for (let i = 0; i < len; i++) {
+        let b = this.buf[this.pos++];
+        b ^= this.ks[i] || 0;
+        b ^= mask++ & 0xff;
+        bytes.push(b);
+      }
+      return Buffer.from(bytes).toString("ascii");
+    }
+  }
+
+  readStringBlock(offset: number): string {
+    const type = this.readByte();
+    if (type === 0x00 || type === 0x73) {
+      return this.readWzString();
+    } else if (type === 0x01 || type === 0x1b) {
+      const strOffset = this.readInt32();
+      const saved = this.pos;
+      this.pos = offset + strOffset;
+      const str = this.readWzString();
+      this.pos = saved;
+      return str;
+    }
+    return "";
+  }
+
+  readOffset(): number {
+    const absPos = this.fileBase + this.pos;
+    let enc = ((absPos - this.fstart) ^ 0xffffffff) >>> 0;
+    enc = Math.imul(enc, this.hash) >>> 0;
+    enc = (enc - WZ_OFFSET_CONSTANT) >>> 0;
+    enc = rotateLeft32(enc, enc & 0x1f);
+    const raw = this.readUInt32();
+    let off = (enc ^ raw) >>> 0;
+    off = (off + this.fstart * 2) >>> 0;
+    return off;
+  }
+}
+
+// ---------- Binary Writer ----------
+
+class WzWriter {
+  private parts: Buffer[] = [];
+  private currentBuf: Buffer;
+  private currentPos: number;
+  public pos: number;
+  private ks: Buffer;
+  private hash: number;
+  private fstart: number;
+
+  constructor(keyStream: Buffer, versionHash: number, fstart: number) {
+    this.ks = keyStream;
+    this.hash = versionHash;
+    this.fstart = fstart;
+    this.currentBuf = Buffer.alloc(65536);
+    this.currentPos = 0;
+    this.pos = 0;
+  }
+
+  private ensure(n: number) {
+    if (this.currentPos + n > this.currentBuf.length) {
+      this.parts.push(this.currentBuf.subarray(0, this.currentPos));
+      const newSize = Math.max(65536, n);
+      this.currentBuf = Buffer.alloc(newSize);
+      this.currentPos = 0;
+    }
+  }
+
+  writeByte(v: number) {
+    this.ensure(1);
+    this.currentBuf[this.currentPos++] = v & 0xff;
+    this.pos++;
+  }
+  writeInt16(v: number) {
+    this.ensure(2);
+    this.currentBuf.writeInt16LE(v, this.currentPos);
+    this.currentPos += 2;
+    this.pos += 2;
+  }
+  writeUInt16(v: number) {
+    this.ensure(2);
+    this.currentBuf.writeUInt16LE(v, this.currentPos);
+    this.currentPos += 2;
+    this.pos += 2;
+  }
+  writeInt32(v: number) {
+    this.ensure(4);
+    this.currentBuf.writeInt32LE(v, this.currentPos);
+    this.currentPos += 4;
+    this.pos += 4;
+  }
+  writeUInt32(v: number) {
+    this.ensure(4);
+    this.currentBuf.writeUInt32LE(v, this.currentPos);
+    this.currentPos += 4;
+    this.pos += 4;
+  }
+  writeBytes(data: Buffer) {
+    this.ensure(data.length);
+    data.copy(this.currentBuf, this.currentPos);
+    this.currentPos += data.length;
+    this.pos += data.length;
+  }
+
+  writeCompressedInt(value: number) {
+    if (value > 127 || value <= -128) {
+      this.writeByte(0x80); // -128 as signed byte
+      this.writeInt32(value);
+    } else {
+      this.writeByte(value & 0xff);
+    }
+  }
+
+  writeWzString(s: string) {
+    if (s.length === 0) {
+      this.writeByte(0);
+      return;
+    }
+    // Always write as ASCII (all WZ names/values we use are ASCII)
+    const len = s.length;
+    if (len > 127) {
+      this.writeByte(0x80); // -128
+      this.writeInt32(len);
+    } else {
+      this.writeByte((-len) & 0xff);
+    }
+    let mask = 0xaa;
+    for (let i = 0; i < len; i++) {
+      let b = s.charCodeAt(i) & 0xff;
+      b ^= this.ks[i] || 0;
+      b ^= mask++ & 0xff;
+      this.writeByte(b);
+    }
+  }
+
+  writeStringValue(s: string, withoutOffset: number, withOffset: number) {
+    // No string caching for simplicity — always inline
+    this.writeByte(withoutOffset);
+    this.writeWzString(s);
+  }
+
+  writeObjectEntry(name: string, dirType: number) {
+    // dirType: 3 = directory, 4 = image
+    this.writeByte(dirType);
+    this.writeWzString(name);
+  }
+
+  writeOffset(value: number) {
+    // Absolute position in the final file = fstart + 2 (version header) + writer pos
+    const absPos = this.fstart + 2 + this.pos;
+    let enc = ((absPos - this.fstart) ^ 0xffffffff) >>> 0;
+    enc = Math.imul(enc, this.hash) >>> 0;
+    enc = (enc - WZ_OFFSET_CONSTANT) >>> 0;
+    enc = rotateLeft32(enc, enc & 0x1f);
+    const writeVal = (enc ^ ((value - this.fstart * 2) >>> 0)) >>> 0;
+    this.writeUInt32(writeVal);
+  }
+
+  toBuffer(): Buffer {
+    this.parts.push(this.currentBuf.subarray(0, this.currentPos));
+    const result = Buffer.concat(this.parts);
+    this.parts = [];
+    this.currentBuf = Buffer.alloc(65536);
+    this.currentPos = 0;
+    return result;
+  }
+}
+
+// ---------- Size Calculation (no string caching) ----------
+
+function getCompressedIntLength(n: number): number {
+  return n > 127 || n <= -128 ? 5 : 1;
+}
+
+function getWzStringLength(s: string): number {
+  if (s.length === 0) return 1;
+  // ASCII: 1 (length byte) + s.length
+  return s.length > 127 ? 1 + 4 + s.length : 1 + s.length;
+}
+
+function getEntryMetaSize(entry: WzEntry): number {
+  let size = 1; // type byte (3 or 4)
+  size += getWzStringLength(entry.name);
+  size += getCompressedIntLength(entry.blockSize);
+  size += getCompressedIntLength(entry.checksum);
+  size += 4; // offset (always 4 bytes)
+  return size;
+}
+
+/** Compute bytes taken by this directory level's OWN entries (not children) */
+function getDirectoryOwnSize(entries: WzEntry[]): number {
+  let size = getCompressedIntLength(entries.length);
+  for (const entry of entries) {
+    size += getEntryMetaSize(entry);
+  }
+  return size;
+}
+
+/** Total bytes for all directory metadata (recursive, depth-first) */
+function getTotalDirectorySize(entries: WzEntry[]): number {
+  let total = getDirectoryOwnSize(entries);
+  for (const entry of entries) {
+    if (entry.type === "dir" && entry.children) {
+      total += getTotalDirectorySize(entry.children);
+    }
+  }
+  return total;
+}
+
+// ---------- Offset Assignment ----------
+
+function assignDirectoryOffsets(
+  entries: WzEntry[],
+  curOffset: number
+): number {
+  // This dir's entries start at curOffset, advance past them
+  curOffset += getDirectoryOwnSize(entries);
+  // Subdirectories follow in depth-first order
+  for (const entry of entries) {
+    if (entry.type === "dir" && entry.children) {
+      entry.offset = curOffset;
+      curOffset = assignDirectoryOffsets(entry.children, curOffset);
+    }
+  }
+  return curOffset;
+}
+
+function assignImageOffsets(entries: WzEntry[], curOffset: number): number {
+  for (const entry of entries) {
+    if (entry.type === "img") {
+      entry.offset = curOffset;
+      curOffset += entry.blockSize;
+    }
+  }
+  for (const entry of entries) {
+    if (entry.type === "dir" && entry.children) {
+      curOffset = assignImageOffsets(entry.children, curOffset);
+    }
+  }
+  return curOffset;
+}
+
+// ---------- WZ File Parsing ----------
+
+function readFileChunk(
+  fd: number,
+  offset: number,
+  length: number
+): Buffer {
+  const stat = fstatSync(fd);
+  const safeLen = Math.min(length, Math.max(0, stat.size - offset));
+  if (safeLen <= 0) return Buffer.alloc(0);
+  const buf = Buffer.alloc(safeLen);
+  readSync(fd, buf, 0, safeLen, offset);
+  return buf;
+}
+
+export function parseWzFile(filePath: string): WzFileInfo {
+  const fd = openSync(filePath, "r");
+  try {
+    const stat = fstatSync(fd);
+    // Read header
+    const headerBuf = readFileChunk(fd, 0, 64);
+    const ident = headerBuf.toString("ascii", 0, 4);
+    if (ident !== "PKG1") throw new Error("Not a WZ file");
+
+    const fsize = Number(headerBuf.readBigUInt64LE(4));
+    const fstart = headerBuf.readUInt32LE(12);
+    let copyrightEnd = 16;
+    while (copyrightEnd < headerBuf.length && headerBuf[copyrightEnd] !== 0)
+      copyrightEnd++;
+    const copyright = headerBuf.toString("ascii", 16, copyrightEnd);
+
+    const header: WzHeader = { ident, fsize, fstart, copyright };
+
+    // Read version header
+    const versionBuf = readFileChunk(fd, fstart, 2);
+    const versionHeader = versionBuf.readUInt16LE(0);
+
+    // Try to detect version and IV
+    const candidates: Array<{ version: number; iv: Buffer }> = [
+      { version: 83, iv: GMS_IV },
+      { version: 83, iv: ZERO_IV },
+      { version: 40, iv: GMS_IV },
+      { version: 176, iv: ZERO_IV },
+    ];
+
+    for (const c of candidates) {
+      const { hash, header: vh } = computeVersionHash(c.version);
+      if ((vh & 0xff) !== (versionHeader & 0xff)) continue;
+
+      // Try to parse first directory entry with this IV
+      const dirBuf = readFileChunk(
+        fd,
+        fstart + 2,
+        Math.min(4096, stat.size - fstart - 2)
+      );
+      const ks = generateKeyStream(c.iv, 4096);
+      const reader = new WzReader(dirBuf, ks, hash, fstart, 0);
+
+      try {
+        const entryCount = reader.readCompressedInt();
+        if (entryCount < 0 || entryCount > 100000) continue;
+        // Try reading first entry
+        const type = reader.readByte();
+        if (type !== 2 && type !== 3 && type !== 4) continue;
+
+        // Looks valid — parse the full directory using fd-based reads
+        const fullKs = generateKeyStream(c.iv, 65536);
+        const root = parseDirFromFd(fd, fullKs, hash, fstart, fstart + 2);
+
+        closeSync(fd);
+        return {
+          header,
+          version: c.version,
+          versionHash: hash,
+          keyStream: fullKs,
+          iv: c.iv,
+          root,
+          filePath,
+        };
+      } catch {
+        continue;
+      }
+    }
+
+    closeSync(fd);
+    throw new Error("Could not detect WZ version/encryption");
+  } catch (err) {
+    try {
+      closeSync(fd);
+    } catch {}
+    throw err;
+  }
+}
+
+/** Parse a directory level from a file descriptor at a given file offset */
+function parseDirFromFd(
+  fd: number,
+  ks: Buffer,
+  hash: number,
+  fstart: number,
+  fileOffset: number
+): WzEntry[] {
+  // Read a chunk at this offset — 256KB is enough for any single directory level
+  const chunkSize = 256 * 1024;
+  const buf = readFileChunk(fd, fileOffset, chunkSize);
+  const reader = new WzReader(buf, ks, hash, fstart, 0, fileOffset);
+
+  const count = reader.readCompressedInt();
+  const entries: WzEntry[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const type = reader.readByte();
+    let name: string;
+    let entryType: "dir" | "img";
+
+    if (type === 2) {
+      // String at offset (relative to fstart)
+      const strOffset = reader.readInt32();
+      const strBuf = readFileChunk(fd, fstart + strOffset, 256);
+      const strReader = new WzReader(strBuf, ks, hash, fstart, 0, fstart + strOffset);
+      const nameType = strReader.readByte(); // 3 = dir, 4 = img
+      name = strReader.readWzString();
+      entryType = nameType === 3 ? "dir" : "img";
+    } else if (type === 3 || type === 4) {
+      name = reader.readWzString();
+      entryType = type === 3 ? "dir" : "img";
+    } else {
+      // Type 1: legacy, skip
+      reader.pos += 4 + 2 + 4;
+      continue;
+    }
+
+    const blockSize = reader.readCompressedInt();
+    const checksum = reader.readCompressedInt();
+    const offset = reader.readOffset();
+
+    entries.push({
+      type: entryType,
+      name,
+      blockSize,
+      checksum,
+      offset,
+      originalOffset: offset,
+      children: entryType === "dir" ? [] : undefined,
+    });
+  }
+
+  // Recurse into subdirectories — read from their offsets in the file
+  for (const entry of entries) {
+    if (entry.type === "dir" && entry.children) {
+      entry.children = parseDirFromFd(fd, ks, hash, fstart, entry.offset);
+    }
+  }
+
+  return entries;
+}
+
+// ---------- .img Building for Equip Items ----------
+
+interface EquipData {
+  itemId: number;
+  subCategory: string;
+  stats: Record<string, number>;
+  requirements: Record<string, number>;
+  flags: Record<string, boolean>;
+  /** Raw PNG buffer for the item icon (optional — uses 1x1 placeholder if missing) */
+  iconPng?: Buffer;
+}
+
+// --- PNG → BGRA4444 conversion ---
+
+interface DecodedIcon {
+  width: number;
+  height: number;
+  /** BGRA4444 pixel data (2 bytes per pixel) */
+  pixels: Buffer;
+}
+
+function decodePngToIcon(pngBuf: Buffer): DecodedIcon {
+  const png = PNG.sync.read(pngBuf);
+
+  // Auto-trim transparent borders
+  let minX = png.width, minY = png.height, maxX = 0, maxY = 0;
+  for (let y = 0; y < png.height; y++) {
+    for (let x = 0; x < png.width; x++) {
+      const alpha = png.data[(y * png.width + x) * 4 + 3];
+      if (alpha > 0) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  // If fully transparent, return 1x1
+  if (maxX < minX || maxY < minY) {
+    return { width: 1, height: 1, pixels: Buffer.from([0x00, 0x00]) };
+  }
+
+  const trimW = maxX - minX + 1;
+  const trimH = maxY - minY + 1;
+
+  // Convert RGBA8888 → BGRA4444 (2 bytes per pixel)
+  // Low byte: (G4 << 4) | B4, High byte: (A4 << 4) | R4
+  const pixels = Buffer.alloc(trimW * trimH * 2);
+  for (let y = 0; y < trimH; y++) {
+    for (let x = 0; x < trimW; x++) {
+      const srcIdx = ((minY + y) * png.width + (minX + x)) * 4;
+      const r = (png.data[srcIdx] >> 4) & 0x0f;
+      const g = (png.data[srcIdx + 1] >> 4) & 0x0f;
+      const b = (png.data[srcIdx + 2] >> 4) & 0x0f;
+      const a = (png.data[srcIdx + 3] >> 4) & 0x0f;
+
+      const dstIdx = (y * trimW + x) * 2;
+      pixels[dstIdx] = (g << 4) | b;       // low byte
+      pixels[dstIdx + 1] = (a << 4) | r;   // high byte
+    }
+  }
+
+  return { width: trimW, height: trimH, pixels };
+}
+
+const SLOT_MAP: Record<string, string> = {
+  Ring: "Ri",
+  Pendant: "Pe",
+  Face: "Af",
+  Eye: "Ae",
+  Earring: "Ae",
+  Belt: "Be",
+  Medal: "Me",
+  Cap: "Cp",
+  Coat: "Ma",
+  Longcoat: "Ma",
+  Pants: "Pn",
+  Shoes: "So",
+  Glove: "Gv",
+  Shield: "Si",
+  Cape: "Sr",
+  Weapon: "Wp",
+};
+
+const STAT_FIELDS: Record<string, string> = {
+  str: "incSTR",
+  dex: "incDEX",
+  int: "incINT",
+  luk: "incLUK",
+  hp: "incMHP",
+  mp: "incMMP",
+  watk: "incPAD",
+  matk: "incMAD",
+  wdef: "incPDD",
+  mdef: "incMDD",
+  acc: "incACC",
+  avoid: "incEVA",
+  speed: "incSpeed",
+  jump: "incJump",
+};
+
+/** Build a complete .img binary blob for an equip item */
+export function buildEquipImg(equip: EquipData, ks: Buffer): Buffer {
+  const w = new ImgWriter(ks);
+  const slot = SLOT_MAP[equip.subCategory] || "Ri";
+  const stats = equip.stats || {};
+  const reqs = equip.requirements || {};
+  const flags = equip.flags || {};
+
+  // Collect all info properties
+  const props: Array<{ name: string; type: "int" | "string" | "canvas"; value: number | string }> = [];
+
+  // Decode icon PNG if provided, otherwise 1x1 placeholder
+  const icon: DecodedIcon = equip.iconPng
+    ? decodePngToIcon(equip.iconPng)
+    : { width: 1, height: 1, pixels: Buffer.from([0x00, 0x00]) };
+
+  props.push({ name: "icon", type: "canvas", value: 0 });
+  props.push({ name: "iconRaw", type: "canvas", value: 0 });
+
+  // Slot
+  props.push({ name: "islot", type: "string", value: slot });
+  props.push({ name: "vslot", type: "string", value: slot });
+
+  // Requirements
+  props.push({ name: "reqJob", type: "int", value: reqs.job ?? 0 });
+  props.push({ name: "reqLevel", type: "int", value: reqs.level ?? 0 });
+  props.push({ name: "reqSTR", type: "int", value: reqs.str ?? 0 });
+  props.push({ name: "reqDEX", type: "int", value: reqs.dex ?? 0 });
+  props.push({ name: "reqINT", type: "int", value: reqs.int ?? 0 });
+  props.push({ name: "reqLUK", type: "int", value: reqs.luk ?? 0 });
+
+  // Flags and slots
+  props.push({ name: "cash", type: "int", value: flags.cash ? 1 : 0 });
+  props.push({ name: "slotMax", type: "int", value: stats.slots ?? 0 });
+  if (stats.slots) props.push({ name: "tuc", type: "int", value: stats.slots });
+  if (flags.tradeBlock)
+    props.push({ name: "tradeBlock", type: "int", value: 1 });
+  if (flags.only) props.push({ name: "only", type: "int", value: 1 });
+  if (flags.notSale) props.push({ name: "notSale", type: "int", value: 1 });
+
+  // Stats
+  for (const [key, wzField] of Object.entries(STAT_FIELDS)) {
+    if (stats[key] && stats[key] !== 0) {
+      props.push({ name: wzField, type: "int", value: stats[key] });
+    }
+  }
+
+  // Build the .img: root SubProperty → "info" SubProperty → properties
+  // Root "Property"
+  w.writeStringBlock("Property", 0x73, 0x1b);
+  w.writeUInt16(0); // reserved
+  w.writeCompressedInt(1); // 1 child: "info"
+
+  // "info" property name
+  w.writeStringBlock("info", 0x00, 0x01);
+  w.writeByte(9); // extended type
+  const infoLenPos = w.pos;
+  w.writeInt32(0); // placeholder for block length
+
+  // "info" SubProperty
+  w.writeStringBlock("Property", 0x73, 0x1b);
+  w.writeUInt16(0); // reserved
+  w.writeCompressedInt(props.length);
+
+  for (const prop of props) {
+    w.writeStringBlock(prop.name, 0x00, 0x01);
+
+    if (prop.type === "int") {
+      w.writeByte(3); // WzIntProperty
+      w.writeCompressedInt(prop.value as number);
+    } else if (prop.type === "string") {
+      w.writeByte(8); // WzStringProperty
+      w.writeStringBlock(prop.value as string, 0x00, 0x01);
+    } else if (prop.type === "canvas") {
+      w.writeByte(9); // extended
+      const canvasLenPos = w.pos;
+      w.writeInt32(0); // placeholder
+
+      w.writeStringBlock("Canvas", 0x73, 0x1b);
+      w.writeByte(0); // unknown
+      // Sub-properties: origin vector
+      w.writeByte(1); // has properties
+      w.writeUInt16(0); // reserved
+      w.writeCompressedInt(1); // 1 property: origin
+
+      // origin vector
+      w.writeStringBlock("origin", 0x00, 0x01);
+      w.writeByte(9); // extended
+      const vecLenPos = w.pos;
+      w.writeInt32(0);
+      w.writeStringBlock("Shape2D#Vector2D", 0x73, 0x1b);
+      w.writeCompressedInt(-4); // X
+      w.writeCompressedInt(icon.height); // Y = height (bottom origin)
+      w.patchInt32(vecLenPos, w.pos - vecLenPos - 4);
+
+      // Canvas data (BGRA4444 = format 1)
+      w.writeCompressedInt(icon.width);
+      w.writeCompressedInt(icon.height);
+      w.writeCompressedInt(1); // format1 (BGRA4444)
+      w.writeCompressedInt(0); // format2
+      w.writeInt32(0); // reserved
+      const compressed = deflateSync(icon.pixels);
+      w.writeInt32(compressed.length + 1); // +1 for header byte
+      w.writeByte(0); // header byte
+      w.writeBytes(compressed);
+
+      w.patchInt32(canvasLenPos, w.pos - canvasLenPos - 4);
+    }
+  }
+
+  // Patch info block length
+  w.patchInt32(infoLenPos, w.pos - infoLenPos - 4);
+
+  return w.toBuffer();
+}
+
+/** Minimal writer for .img serialization (no offset encryption needed) */
+class ImgWriter {
+  private buf: Buffer;
+  public pos: number;
+  private ks: Buffer;
+
+  constructor(ks: Buffer) {
+    this.buf = Buffer.alloc(4096);
+    this.pos = 0;
+    this.ks = ks;
+  }
+
+  private ensure(n: number) {
+    if (this.pos + n > this.buf.length) {
+      const newBuf = Buffer.alloc(this.buf.length * 2 + n);
+      this.buf.copy(newBuf);
+      this.buf = newBuf;
+    }
+  }
+
+  writeByte(v: number) {
+    this.ensure(1);
+    this.buf[this.pos++] = v & 0xff;
+  }
+  writeUInt16(v: number) {
+    this.ensure(2);
+    this.buf.writeUInt16LE(v, this.pos);
+    this.pos += 2;
+  }
+  writeInt32(v: number) {
+    this.ensure(4);
+    this.buf.writeInt32LE(v, this.pos);
+    this.pos += 4;
+  }
+  writeBytes(data: Buffer) {
+    this.ensure(data.length);
+    data.copy(this.buf, this.pos);
+    this.pos += data.length;
+  }
+
+  writeCompressedInt(value: number) {
+    if (value > 127 || value <= -128) {
+      this.writeByte(0x80);
+      this.writeInt32(value);
+    } else {
+      this.writeByte(value & 0xff);
+    }
+  }
+
+  writeWzString(s: string) {
+    if (s.length === 0) {
+      this.writeByte(0);
+      return;
+    }
+    const len = s.length;
+    if (len > 127) {
+      this.writeByte(0x80);
+      this.writeInt32(len);
+    } else {
+      this.writeByte((-len) & 0xff);
+    }
+    let mask = 0xaa;
+    for (let i = 0; i < len; i++) {
+      let b = s.charCodeAt(i) & 0xff;
+      b ^= this.ks[i] || 0;
+      b ^= mask++ & 0xff;
+      this.writeByte(b);
+    }
+  }
+
+  writeStringBlock(s: string, withoutOffset: number, _withOffset: number) {
+    this.writeByte(withoutOffset);
+    this.writeWzString(s);
+  }
+
+  patchInt32(pos: number, value: number) {
+    this.buf.writeInt32LE(value, pos);
+  }
+
+  toBuffer(): Buffer {
+    return Buffer.from(this.buf.subarray(0, this.pos));
+  }
+}
+
+// ---------- String.wz Eqp.img Patching ----------
+
+interface StringEntry {
+  itemId: number;
+  name: string;
+  desc: string;
+  sectionName: string; // "Ring", "Accessory", "Cap", etc.
+}
+
+const STRING_SECTIONS: Record<string, string> = {
+  Ring: "Ring",
+  Pendant: "Accessory",
+  Face: "Accessory",
+  Eye: "Accessory",
+  Earring: "Accessory",
+  Belt: "Accessory",
+  Medal: "Accessory",
+  Cap: "Cap",
+  Coat: "Top",
+  Longcoat: "Overall",
+  Pants: "Bottom",
+  Shoes: "Shoes",
+  Glove: "Glove",
+  Shield: "Shield",
+  Cape: "Cape",
+  Weapon: "Weapon",
+};
+
+export function getSectionName(subCategory: string): string {
+  return STRING_SECTIONS[subCategory] || "Accessory";
+}
+
+/** Parse and modify Eqp.img binary data to add string entries */
+export function patchEqpImg(
+  imgData: Buffer,
+  newEntries: StringEntry[],
+  ks: Buffer
+): Buffer {
+  // Parse the property tree
+  const reader = new ImgReader(imgData, ks);
+  const tree = reader.parseRoot();
+
+  // Add entries to the appropriate sections
+  for (const entry of newEntries) {
+    addStringToSection(tree, entry);
+  }
+
+  // Re-serialize
+  const writer = new ImgWriter(ks);
+  writePropertyTree(writer, tree);
+  return writer.toBuffer();
+}
+
+// Simple property tree for String.wz parsing
+interface PropNode {
+  name: string;
+  type: "sub" | "string" | "int" | "other";
+  value?: string | number;
+  children?: PropNode[];
+  // For 'other' types, keep raw bytes
+  rawBytes?: Buffer;
+}
+
+class ImgReader {
+  private buf: Buffer;
+  private pos: number;
+  private ks: Buffer;
+
+  constructor(buf: Buffer, ks: Buffer) {
+    this.buf = buf;
+    this.pos = 0;
+    this.ks = ks;
+  }
+
+  readByte(): number {
+    return this.buf[this.pos++];
+  }
+  readInt8(): number {
+    return this.buf.readInt8(this.pos++ - 0);
+  }
+  readUInt16(): number {
+    const v = this.buf.readUInt16LE(this.pos);
+    this.pos += 2;
+    return v;
+  }
+  readInt32(): number {
+    const v = this.buf.readInt32LE(this.pos);
+    this.pos += 4;
+    return v;
+  }
+  readFloat(): number {
+    const v = this.buf.readFloatLE(this.pos);
+    this.pos += 4;
+    return v;
+  }
+  readDouble(): number {
+    const v = this.buf.readDoubleLE(this.pos);
+    this.pos += 8;
+    return v;
+  }
+
+  readCompressedInt(): number {
+    const sb = this.buf.readInt8(this.pos++);
+    return sb === -128 ? this.readInt32() : sb;
+  }
+
+  readWzString(): string {
+    const smallLen = this.buf.readInt8(this.pos++);
+    if (smallLen === 0) return "";
+
+    if (smallLen > 0) {
+      const len = smallLen === 127 ? this.readInt32() : smallLen;
+      let mask = 0xaaaa;
+      const chars: number[] = [];
+      for (let i = 0; i < len; i++) {
+        let ch = this.buf.readUInt16LE(this.pos);
+        this.pos += 2;
+        ch ^= ((this.ks[i * 2 + 1] || 0) << 8) | (this.ks[i * 2] || 0);
+        ch ^= mask++;
+        chars.push(ch);
+      }
+      return String.fromCharCode(...chars);
+    } else {
+      const len = smallLen === -128 ? this.readInt32() : -smallLen;
+      let mask = 0xaa;
+      const bytes: number[] = [];
+      for (let i = 0; i < len; i++) {
+        let b = this.buf[this.pos++];
+        b ^= this.ks[i] || 0;
+        b ^= mask++ & 0xff;
+        bytes.push(b);
+      }
+      return Buffer.from(bytes).toString("ascii");
+    }
+  }
+
+  readStringBlock(): string {
+    const type = this.readByte();
+    if (type === 0x00 || type === 0x73) {
+      return this.readWzString();
+    } else if (type === 0x01 || type === 0x1b) {
+      const offset = this.readInt32();
+      const saved = this.pos;
+      this.pos = offset;
+      const str = this.readWzString();
+      this.pos = saved;
+      return str;
+    }
+    return "";
+  }
+
+  parseRoot(): PropNode {
+    // Root is a SubProperty
+    const typeName = this.readStringBlock(); // "Property"
+    if (typeName !== "Property")
+      throw new Error(`Expected 'Property', got '${typeName}'`);
+
+    return {
+      name: "",
+      type: "sub",
+      children: this.parsePropertyList(),
+    };
+  }
+
+  parsePropertyList(): PropNode[] {
+    this.readUInt16(); // reserved 2 bytes
+    const count = this.readCompressedInt();
+    const props: PropNode[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const name = this.readStringBlock();
+      const propType = this.readByte();
+
+      switch (propType) {
+        case 0: // Null
+          props.push({ name, type: "other", value: 0 });
+          break;
+        case 2: // Short
+        case 11: {
+          const v = this.buf.readInt16LE(this.pos);
+          this.pos += 2;
+          props.push({ name, type: "int", value: v });
+          break;
+        }
+        case 3:
+        case 19: // CompressedInt
+          props.push({
+            name,
+            type: "int",
+            value: this.readCompressedInt(),
+          });
+          break;
+        case 4: {
+          // Float
+          const fb = this.readByte();
+          const fv = fb === 0x80 ? this.readFloat() : 0;
+          props.push({ name, type: "int", value: fv });
+          break;
+        }
+        case 5: // Double
+          props.push({ name, type: "int", value: this.readDouble() });
+          break;
+        case 8: // String
+          props.push({
+            name,
+            type: "string",
+            value: this.readStringBlock(),
+          });
+          break;
+        case 9: {
+          // Extended (SubProperty, Canvas, Vector, UOL, Sound)
+          const blockLen = this.readInt32();
+          const blockEnd = this.pos + blockLen;
+          const extTypeName = this.readStringBlock();
+
+          if (extTypeName === "Property") {
+            props.push({
+              name,
+              type: "sub",
+              children: this.parsePropertyList(),
+            });
+          } else {
+            // For other extended types, keep raw bytes
+            const rawStart = this.pos;
+            this.pos = blockEnd;
+            props.push({
+              name,
+              type: "other",
+              rawBytes: Buffer.concat([
+                // Include the type name for re-serialization
+                serializeStringBlock(extTypeName, this.ks),
+                this.buf.subarray(rawStart, blockEnd),
+              ]),
+            });
+          }
+          break;
+        }
+        case 20: {
+          // Long
+          const longSb = this.buf.readInt8(this.pos++);
+          const longVal =
+            longSb === -128
+              ? Number(this.buf.readBigInt64LE(this.pos))
+              : longSb;
+          if (longSb === -128) this.pos += 8;
+          props.push({ name, type: "int", value: longVal });
+          break;
+        }
+        default:
+          throw new Error(
+            `Unknown property type ${propType} at pos ${this.pos - 1}`
+          );
+      }
+    }
+    return props;
+  }
+}
+
+function serializeStringBlock(s: string, ks: Buffer): Buffer {
+  const w = new ImgWriter(ks);
+  w.writeStringBlock(s, 0x73, 0x1b);
+  return w.toBuffer();
+}
+
+function addStringToSection(tree: PropNode, entry: StringEntry) {
+  // Navigate: root → "Eqp" → sectionName
+  const eqp = tree.children?.find((c) => c.name === "Eqp");
+  if (!eqp?.children) return;
+
+  const section = eqp.children.find((c) => c.name === entry.sectionName);
+  if (!section?.children) return;
+
+  // Check if entry already exists
+  const existing = section.children.find(
+    (c) => c.name === String(entry.itemId)
+  );
+  if (existing) return;
+
+  // Add new entry
+  section.children.push({
+    name: String(entry.itemId),
+    type: "sub",
+    children: [
+      { name: "name", type: "string", value: entry.name },
+      { name: "desc", type: "string", value: entry.desc },
+    ],
+  });
+}
+
+function writePropertyTree(writer: ImgWriter, node: PropNode) {
+  // Root level
+  writer.writeStringBlock("Property", 0x73, 0x1b);
+  writePropertyList(writer, node.children || []);
+}
+
+function writePropertyList(writer: ImgWriter, props: PropNode[]) {
+  writer.writeUInt16(0); // reserved
+  writer.writeCompressedInt(props.length);
+
+  for (const prop of props) {
+    writer.writeStringBlock(prop.name, 0x00, 0x01);
+
+    switch (prop.type) {
+      case "int":
+        writer.writeByte(3);
+        writer.writeCompressedInt(prop.value as number);
+        break;
+      case "string":
+        writer.writeByte(8);
+        writer.writeStringBlock(prop.value as string, 0x00, 0x01);
+        break;
+      case "sub": {
+        writer.writeByte(9);
+        const lenPos = writer.pos;
+        writer.writeInt32(0); // placeholder
+        writer.writeStringBlock("Property", 0x73, 0x1b);
+        writePropertyList(writer, prop.children || []);
+        writer.patchInt32(lenPos, writer.pos - lenPos - 4);
+        break;
+      }
+      case "other": {
+        if (prop.rawBytes) {
+          writer.writeByte(9);
+          const lenPos2 = writer.pos;
+          writer.writeInt32(0);
+          writer.writeBytes(prop.rawBytes);
+          writer.patchInt32(lenPos2, writer.pos - lenPos2 - 4);
+        } else {
+          writer.writeByte(0); // null
+        }
+        break;
+      }
+    }
+  }
+}
+
+// ---------- WZ File Saving ----------
+
+export function saveWzFile(
+  wzInfo: WzFileInfo,
+  outputPath: string
+): void {
+  const { header, versionHash, keyStream: ks, iv } = wzInfo;
+  const { header: versionHeaderByte } = computeVersionHash(wzInfo.version);
+  const fstart = header.fstart;
+
+  // 1. Calculate directory sizes and assign offsets
+  const totalDirSize = getTotalDirectorySize(wzInfo.root);
+  const imageStartOffset = fstart + 2 + totalDirSize;
+
+  // Assign directory offsets (where child entries start)
+  let dirOffset = fstart + 2; // root starts right after version
+  assignDirectoryOffsets(wzInfo.root, dirOffset);
+
+  // Assign image offsets (where .img data starts)
+  assignImageOffsets(wzInfo.root, imageStartOffset);
+
+  // 2. Build directory buffer
+  const dirWriter = new WzWriter(ks, versionHash, fstart);
+  writeDirEntries(dirWriter, wzInfo.root);
+  const dirBuf = dirWriter.toBuffer();
+
+  // 3. Write output file
+  const fd = openSync(outputPath, "w");
+  try {
+    let writePos = 0;
+
+    // Header
+    const headerBuf = Buffer.alloc(fstart);
+    headerBuf.write("PKG1", 0, 4, "ascii");
+    // fsize will be patched later
+    headerBuf.writeUInt32LE(fstart, 12);
+    const copyrightBytes = Buffer.from(header.copyright + "\0", "ascii");
+    copyrightBytes.copy(headerBuf, 16);
+    writeSync(fd, headerBuf, 0, fstart, writePos);
+    writePos += fstart;
+
+    // Version header (2 bytes)
+    const versionBuf = Buffer.alloc(2);
+    versionBuf.writeUInt16LE(versionHeaderByte, 0);
+    writeSync(fd, versionBuf, 0, 2, writePos);
+    writePos += 2;
+
+    // Directory
+    writeSync(fd, dirBuf, 0, dirBuf.length, writePos);
+    writePos += dirBuf.length;
+
+    // Image data (in depth-first order matching assignImageOffsets)
+    writePos = writeImageData(fd, wzInfo.root, writePos, wzInfo.filePath);
+
+    // Patch file size in header
+    const fsizeBuf = Buffer.alloc(8);
+    fsizeBuf.writeBigUInt64LE(BigInt(writePos - fstart), 0);
+    writeSync(fd, fsizeBuf, 0, 8, 4);
+
+    closeSync(fd);
+  } catch (err) {
+    try {
+      closeSync(fd);
+    } catch {}
+    try {
+      unlinkSync(outputPath);
+    } catch {}
+    throw err;
+  }
+}
+
+function writeDirEntries(writer: WzWriter, entries: WzEntry[]) {
+  writer.writeCompressedInt(entries.length);
+
+  for (const entry of entries) {
+    writer.writeObjectEntry(
+      entry.name,
+      entry.type === "dir" ? 3 : 4
+    );
+    writer.writeCompressedInt(entry.blockSize);
+    writer.writeCompressedInt(entry.checksum);
+    writer.writeOffset(entry.offset);
+  }
+
+  // Recurse into subdirectories
+  for (const entry of entries) {
+    if (entry.type === "dir" && entry.children) {
+      if (entry.children.length > 0) {
+        writeDirEntries(writer, entry.children);
+      } else {
+        writer.writeByte(0); // empty dir
+      }
+    }
+  }
+}
+
+function writeImageData(
+  outputFd: number,
+  entries: WzEntry[],
+  writePos: number,
+  originalPath: string
+): number {
+  const CHUNK = 65536;
+  const chunkBuf = Buffer.alloc(CHUNK);
+
+  for (const entry of entries) {
+    if (entry.type === "img") {
+      if (entry.data) {
+        // New image: write from buffer
+        writeSync(outputFd, entry.data, 0, entry.data.length, writePos);
+        writePos += entry.data.length;
+      } else if (entry.originalOffset !== undefined) {
+        // Existing image: copy from original file
+        const origFd = openSync(originalPath, "r");
+        try {
+          let remaining = entry.blockSize;
+          let srcOffset = entry.originalOffset;
+          while (remaining > 0) {
+            const toRead = Math.min(CHUNK, remaining);
+            readSync(origFd, chunkBuf, 0, toRead, srcOffset);
+            writeSync(outputFd, chunkBuf, 0, toRead, writePos);
+            srcOffset += toRead;
+            writePos += toRead;
+            remaining -= toRead;
+          }
+        } finally {
+          closeSync(origFd);
+        }
+      }
+    }
+  }
+
+  // Recurse into subdirectories
+  for (const entry of entries) {
+    if (entry.type === "dir" && entry.children) {
+      writePos = writeImageData(
+        outputFd,
+        entry.children,
+        writePos,
+        originalPath
+      );
+    }
+  }
+
+  return writePos;
+}
+
+// ---------- High-Level Patch API ----------
+
+function padItemId(id: number): string {
+  return String(id).padStart(8, "0");
+}
+
+function computeChecksum(data: Buffer): number {
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) {
+    sum = (sum + data[i]) | 0;
+  }
+  return sum;
+}
+
+const SUB_CATEGORY_DIRS: Record<string, string> = {
+  Ring: "Ring",
+  Pendant: "Accessory",
+  Face: "Accessory",
+  Eye: "Accessory",
+  Earring: "Accessory",
+  Belt: "Accessory",
+  Medal: "Accessory",
+  Cap: "Cap",
+  Coat: "Coat",
+  Longcoat: "Longcoat",
+  Pants: "Pants",
+  Shoes: "Shoes",
+  Glove: "Glove",
+  Shield: "Shield",
+  Cape: "Cape",
+  Weapon: "Weapon",
+};
+
+/** Add a custom equip item to a parsed Character.wz */
+export function addEquipToCharacterWz(
+  wzInfo: WzFileInfo,
+  equip: EquipData
+): void {
+  const dirName = SUB_CATEGORY_DIRS[equip.subCategory] || "Ring";
+  const imgName = `${padItemId(equip.itemId)}.img`;
+
+  // Find or create the subdirectory
+  let subDir = wzInfo.root.find(
+    (e) => e.type === "dir" && e.name === dirName
+  );
+  if (!subDir) {
+    subDir = {
+      type: "dir",
+      name: dirName,
+      blockSize: 0,
+      checksum: 0,
+      offset: 0,
+      children: [],
+    };
+    wzInfo.root.push(subDir);
+  }
+
+  // Check if image already exists
+  if (subDir.children?.some((e) => e.name === imgName)) return;
+
+  // Build the .img data
+  const imgData = buildEquipImg(equip, wzInfo.keyStream);
+  const checksum = computeChecksum(imgData);
+
+  subDir.children!.push({
+    type: "img",
+    name: imgName,
+    blockSize: imgData.length,
+    checksum,
+    offset: 0, // will be computed during save
+    data: imgData,
+  });
+}
+
+/** Modify Eqp.img in a parsed String.wz to add item names */
+export function addStringsToStringWz(
+  wzInfo: WzFileInfo,
+  entries: StringEntry[]
+): void {
+  // Find Eqp.img in root directory
+  const eqpEntry = wzInfo.root.find(
+    (e) => e.type === "img" && e.name === "Eqp.img"
+  );
+  if (!eqpEntry)
+    throw new Error("Eqp.img not found in String.wz");
+
+  // Read the original .img data
+  const origFd = openSync(wzInfo.filePath, "r");
+  let imgData: Buffer;
+  try {
+    imgData = Buffer.alloc(eqpEntry.blockSize);
+    readSync(
+      origFd,
+      imgData,
+      0,
+      eqpEntry.blockSize,
+      eqpEntry.originalOffset!
+    );
+  } finally {
+    closeSync(origFd);
+  }
+
+  // Parse, modify, and re-serialize
+  const newImgData = patchEqpImg(imgData, entries, wzInfo.keyStream);
+  const checksum = computeChecksum(newImgData);
+
+  // Replace the entry
+  eqpEntry.blockSize = newImgData.length;
+  eqpEntry.checksum = checksum;
+  eqpEntry.data = newImgData;
+  eqpEntry.originalOffset = undefined; // use data instead of copying from original
+}

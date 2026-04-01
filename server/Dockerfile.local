@@ -1,0 +1,18 @@
+# Local dev build — uses mounted WZ files instead of downloading from R2
+FROM maven:3.9-amazoncorretto-21-al2023 AS jar
+WORKDIR /opt/cosmic
+COPY pom.xml ./pom.xml
+COPY src ./src
+RUN mvn -f ./pom.xml clean package -Dmaven.test.skip -T 1C
+
+FROM amazoncorretto:21-al2023
+RUN yum install -y tar gzip && yum clean all
+WORKDIR /opt/server
+# WZ files mounted via docker-compose volume (not baked in)
+COPY --from=jar /opt/cosmic/target/Cosmic.jar ./Server.jar
+COPY scripts ./scripts/
+COPY config.yaml ./
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+EXPOSE 8484 7575 7576 7577
+ENTRYPOINT ["./entrypoint.sh"]

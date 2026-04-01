@@ -69,6 +69,11 @@ export default function ItemsPage() {
   const [activeCategory, setActiveCategory] = useState("all");
   const [activeFilter, setActiveFilter] = useState("none");
   const [searchTerm, setSearchTerm] = useState("");
+  const [publishing, setPublishing] = useState(false);
+  const [publishResult, setPublishResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
   const router = useRouter();
 
   const fetchItems = useCallback(async (query: string, category: string, filter: string) => {
@@ -92,6 +97,28 @@ export default function ItemsPage() {
   }, []);
 
   useEffect(() => { fetchItems("", "all", "none"); }, [fetchItems]);
+
+  const handlePublish = useCallback(async () => {
+    if (!confirm("Publish all custom items to the game server? This will restart the server.")) return;
+    setPublishing(true);
+    setPublishResult(null);
+    try {
+      const res = await fetch("/api/admin/items/publish", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setPublishResult({
+          success: true,
+          message: `Published ${data.items_published} item(s). Server restarting with new WZ files.`,
+        });
+      } else {
+        setPublishResult({ success: false, message: data.error || "Publish failed" });
+      }
+    } catch {
+      setPublishResult({ success: false, message: "Network error during publish" });
+    } finally {
+      setPublishing(false);
+    }
+  }, []);
 
   const handleSearch = useCallback(
     (value: string) => {
@@ -129,13 +156,41 @@ export default function ItemsPage() {
             Browse equipment, consumables, and all item data
           </p>
         </div>
-        <button
-          onClick={() => router.push("/items/create")}
-          className="rounded-lg bg-accent-gold px-4 py-2 text-sm font-semibold text-bg-primary hover:bg-accent-gold/90 transition-colors shadow-lg shadow-accent-gold/20"
-        >
-          + Create Item
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handlePublish}
+            disabled={publishing}
+            className="rounded-lg border border-accent-blue/30 bg-accent-blue/10 px-4 py-2 text-sm font-semibold text-accent-blue hover:bg-accent-blue/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {publishing ? "Publishing..." : "Publish to Server"}
+          </button>
+          <button
+            onClick={() => router.push("/items/create")}
+            className="rounded-lg bg-accent-gold px-4 py-2 text-sm font-semibold text-bg-primary hover:bg-accent-gold/90 transition-colors shadow-lg shadow-accent-gold/20"
+          >
+            + Create Item
+          </button>
+        </div>
       </div>
+
+      {/* Publish Result */}
+      {publishResult && (
+        <div
+          className={`rounded-lg border p-4 text-sm ${
+            publishResult.success
+              ? "border-accent-green/30 bg-accent-green/10 text-accent-green"
+              : "border-accent-red/30 bg-accent-red/10 text-accent-red"
+          }`}
+        >
+          {publishResult.message}
+          <button
+            onClick={() => setPublishResult(null)}
+            className="ml-3 underline opacity-70 hover:opacity-100"
+          >
+            dismiss
+          </button>
+        </div>
+      )}
 
       {/* Search & Filters */}
       <div className="space-y-4">
