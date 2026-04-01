@@ -48,6 +48,22 @@ export default function CreateItemPage() {
   const [description, setDescription] = useState("");
   const [subCategory, setSubCategory] = useState("Ring");
   const [baseItemId, setBaseItemId] = useState("");
+  const [suggestedIds, setSuggestedIds] = useState<number[]>([]);
+  const [idInfo, setIdInfo] = useState<string | null>(null);
+  const [loadingIds, setLoadingIds] = useState(false);
+
+  const fetchAvailableIds = async (cat: string) => {
+    setLoadingIds(true);
+    try {
+      const res = await fetch(`/api/admin/items/next-id?subCategory=${cat}&count=5`);
+      const data = await res.json();
+      if (data.suggested) {
+        setSuggestedIds(data.suggested);
+        setIdInfo(`${data.totalAvailable} available in ${data.range.start}-${data.range.end}`);
+      }
+    } catch { /* ignore */ }
+    setLoadingIds(false);
+  };
 
   const [stats, setStats] = useState<Record<string, number>>({});
   const [reqs, setReqs] = useState<Record<string, number>>({});
@@ -257,15 +273,41 @@ export default function CreateItemPage() {
                   <label className="block text-sm font-medium text-text-secondary mb-1">
                     Item ID
                   </label>
-                  <input
-                    type="number"
-                    value={itemId}
-                    onChange={(e) => setItemId(e.target.value)}
-                    placeholder="e.g. 1112950"
-                    className="w-full rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/30"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={itemId}
+                      onChange={(e) => setItemId(e.target.value)}
+                      placeholder="e.g. 1112950"
+                      className="flex-1 rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/30"
+                    />
+                    <button
+                      onClick={() => fetchAvailableIds(subCategory)}
+                      disabled={loadingIds}
+                      className="rounded-lg border border-accent-blue/30 bg-accent-blue/10 px-3 py-2 text-xs font-medium text-accent-blue hover:bg-accent-blue/20 transition-colors whitespace-nowrap"
+                    >
+                      {loadingIds ? "..." : "Find IDs"}
+                    </button>
+                  </div>
+                  {suggestedIds.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {suggestedIds.map((id) => (
+                        <button
+                          key={id}
+                          onClick={() => setItemId(String(id))}
+                          className={`rounded-md px-2 py-1 text-xs font-mono border transition-all ${
+                            itemId === String(id)
+                              ? "bg-accent-gold/10 text-accent-gold border-accent-gold/30"
+                              : "bg-bg-secondary text-text-secondary border-border hover:text-text-primary hover:border-border-light"
+                          }`}
+                        >
+                          {id}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <p className="mt-1 text-xs text-text-muted">
-                    Rings: 1112000-1112999. Must not conflict with existing items.
+                    {idInfo || "Click 'Find IDs' to see available IDs for this category."}
                   </p>
                 </div>
                 <div>
@@ -319,7 +361,7 @@ export default function CreateItemPage() {
                   {SUB_CATEGORIES.map((cat) => (
                     <button
                       key={cat}
-                      onClick={() => setSubCategory(cat)}
+                      onClick={() => { setSubCategory(cat); setSuggestedIds([]); setIdInfo(null); }}
                       className={`rounded-full px-3 py-1.5 text-xs font-medium border transition-all ${
                         subCategory === cat
                           ? "bg-accent-gold/10 text-accent-gold border-accent-gold/30"
