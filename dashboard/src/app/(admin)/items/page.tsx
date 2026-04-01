@@ -120,13 +120,21 @@ export default function ItemsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-text-primary">
-          Items
-        </h1>
-        <p className="mt-1.5 text-text-secondary">
-          Browse equipment, consumables, and all item data
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-text-primary">
+            Items
+          </h1>
+          <p className="mt-1.5 text-text-secondary">
+            Browse equipment, consumables, and all item data
+          </p>
+        </div>
+        <button
+          onClick={() => router.push("/items/create")}
+          className="rounded-lg bg-accent-gold px-4 py-2 text-sm font-semibold text-bg-primary hover:bg-accent-gold/90 transition-colors shadow-lg shadow-accent-gold/20"
+        >
+          + Create Item
+        </button>
       </div>
 
       {/* Search & Filters */}

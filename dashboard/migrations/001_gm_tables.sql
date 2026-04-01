@@ -111,6 +111,24 @@ CREATE TABLE IF NOT EXISTS cheat_flags (
   INDEX idx_flagged (flagged_at)
 );
 
+-- Custom items created via admin dashboard
+CREATE TABLE IF NOT EXISTS custom_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  item_id INT NOT NULL UNIQUE COMMENT 'MapleStory item ID (must not conflict with existing WZ items)',
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  category ENUM('equip', 'consume', 'etc') NOT NULL DEFAULT 'equip',
+  sub_category VARCHAR(50) DEFAULT 'Accessory' COMMENT 'WZ subcategory: Ring, Cap, Coat, Weapon, etc.',
+  base_item_id INT COMMENT 'Existing item ID to clone visuals from (client shows this sprite)',
+  icon_url VARCHAR(500) COMMENT 'Custom icon PNG uploaded to R2',
+  stats JSON COMMENT '{"str":5,"dex":3,"hp":100,...}',
+  requirements JSON COMMENT '{"level":10,"str":0,"dex":0,"int":0,"luk":0,"job":0}',
+  flags JSON COMMENT '{"cash":false,"tradeBlock":false,"only":false,"notSale":false}',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX (category)
+);
+
 -- Event tracking with auto-expiry (used by AI GM to manage event lifecycle)
 CREATE TABLE IF NOT EXISTS gm_events (
   id INT AUTO_INCREMENT PRIMARY KEY,
