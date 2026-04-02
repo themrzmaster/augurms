@@ -453,7 +453,7 @@ function GoalsPanel() {
 }
 
 // ---- Past Session as compact card ----
-function PastSessionCard({ session, isScheduled }: { session: PastSession; isScheduled: boolean }) {
+function PastSessionCard({ session, isScheduled, onRetry }: { session: PastSession; isScheduled: boolean; onRetry?: (prompt: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [actions, setActions] = useState<any[] | null>(null);
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
@@ -543,6 +543,14 @@ function PastSessionCard({ session, isScheduled }: { session: PastSession; isSch
           )}
           {actions !== null && actions.length === 0 && !session.summary && (
             <div className="text-[11px] text-text-muted">No details available for this session.</div>
+          )}
+          {session.status === "error" && onRetry && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRetry(session.prompt || "Review server health and make adjustments as needed."); }}
+              className="mt-2 rounded-md bg-accent-red/10 border border-accent-red/20 px-3 py-1.5 text-[11px] font-semibold text-accent-red hover:bg-accent-red/20 transition-colors"
+            >
+              Retry
+            </button>
           )}
         </div>
       )}
@@ -695,7 +703,7 @@ export default function GameMasterPage() {
             <div className="space-y-2 pb-3 border-b border-border/30 mb-3">
               <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Previous Sessions</p>
               {pastSessions.map((s) => (
-                <PastSessionCard key={s.id} session={s} isScheduled={s.trigger === "scheduled"} />
+                <PastSessionCard key={s.id} session={s} isScheduled={s.trigger === "scheduled"} onRetry={!running ? runGM : undefined} />
               ))}
             </div>
           )}
