@@ -544,9 +544,9 @@ function PastSessionCard({ session, isScheduled, onRetry }: { session: PastSessi
           {actions !== null && actions.length === 0 && !session.summary && (
             <div className="text-[11px] text-text-muted">No details available for this session.</div>
           )}
-          {session.status === "error" && onRetry && (
+          {session.status === "error" && onRetry && session.prompt && (
             <button
-              onClick={(e) => { e.stopPropagation(); onRetry("Review server health and make adjustments as needed."); }}
+              onClick={(e) => { e.stopPropagation(); onRetry(session.prompt!); }}
               className="mt-2 rounded-md bg-accent-red/10 border border-accent-red/20 px-3 py-1.5 text-[11px] font-semibold text-accent-red hover:bg-accent-red/20 transition-colors"
             >
               Retry
