@@ -344,28 +344,103 @@ function SchedulePanel() {
 function GoalsPanel() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [newGoal, setNewGoal] = useState("");
+  const [newMetric, setNewMetric] = useState("");
+  const [newTarget, setNewTarget] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/gm/goals").then((r) => r.json()).then(setGoals).catch(() => {}).finally(() => setLoading(false));
+  const fetchGoals = useCallback(async () => {
+    try {
+      const res = await fetch("/api/gm/goals");
+      setGoals(await res.json());
+    } catch {}
+    setLoading(false);
   }, []);
 
-  if (loading || goals.length === 0) return null;
+  useEffect(() => { fetchGoals(); }, [fetchGoals]);
+
+  const createGoal = async () => {
+    if (!newGoal.trim()) return;
+    setSaving(true);
+    try {
+      await fetch("/api/gm/goals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          goal: newGoal.trim(),
+          targetMetric: newMetric.trim() || "manual",
+          targetValue: Number(newTarget) || 0,
+        }),
+      });
+      setNewGoal("");
+      setNewMetric("");
+      setNewTarget("");
+      setShowForm(false);
+      await fetchGoals();
+    } catch {}
+    setSaving(false);
+  };
+
+  const abandonGoal = async (id: number) => {
+    await fetch("/api/gm/goals", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status: "abandoned" }),
+    });
+    await fetchGoals();
+  };
+
+  if (loading) return null;
   const active = goals.filter((g) => g.status === "active");
   const achieved = goals.filter((g) => g.status === "achieved");
 
   return (
     <div className="rounded-xl border border-border bg-bg-card p-4">
-      <h3 className="text-sm font-semibold text-text-primary mb-2.5">Goals</h3>
+      <div className="flex items-center justify-between mb-2.5">
+        <h3 className="text-sm font-semibold text-text-primary">Goals</h3>
+        <button onClick={() => setShowForm(!showForm)}
+          className="text-[11px] font-medium text-accent-blue hover:text-accent-blue/80 transition-colors">
+          {showForm ? "Cancel" : "+ Add"}
+        </button>
+      </div>
+      {showForm && (
+        <div className="mb-3 space-y-2 rounded-lg border border-border/60 bg-bg-secondary/50 p-3">
+          <input type="text" value={newGoal} onChange={(e) => setNewGoal(e.target.value)}
+            placeholder="Goal description (e.g. Make AP Resets affordable)"
+            className="w-full rounded-md border border-border bg-bg-primary px-2.5 py-1.5 text-xs text-text-primary placeholder-text-muted outline-none focus:border-accent-blue/50" />
+          <div className="flex gap-2">
+            <input type="text" value={newMetric} onChange={(e) => setNewMetric(e.target.value)}
+              placeholder="Metric (optional)"
+              className="flex-1 rounded-md border border-border bg-bg-primary px-2.5 py-1.5 text-xs text-text-primary placeholder-text-muted outline-none focus:border-accent-blue/50" />
+            <input type="number" value={newTarget} onChange={(e) => setNewTarget(e.target.value)}
+              placeholder="Target"
+              className="w-20 rounded-md border border-border bg-bg-primary px-2.5 py-1.5 text-xs text-text-primary placeholder-text-muted outline-none focus:border-accent-blue/50" />
+          </div>
+          <button onClick={createGoal} disabled={!newGoal.trim() || saving}
+            className="rounded-md bg-accent-blue px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-accent-blue/80 disabled:opacity-40 transition-colors">
+            {saving ? "Saving..." : "Create Goal"}
+          </button>
+        </div>
+      )}
       <div className="space-y-1.5">
         {active.map((g) => (
-          <div key={g.id} className="flex items-start gap-2 text-xs">
+          <div key={g.id} className="group flex items-start gap-2 text-xs">
             <span className="mt-1 h-1.5 w-1.5 rounded-full bg-accent-blue shrink-0" />
             <div className="flex-1 min-w-0">
               <span className="text-text-primary">{g.goal}</span>
-              <span className="ml-2 text-text-muted">{g.currentValue ?? "?"}/{g.targetValue}</span>
+              {g.targetValue > 0 && (
+                <span className="ml-2 text-text-muted">{g.currentValue ?? "?"}/{g.targetValue}</span>
+              )}
             </div>
+            <button onClick={() => abandonGoal(g.id)}
+              className="shrink-0 text-[10px] text-text-muted opacity-0 group-hover:opacity-100 hover:text-accent-red transition-all"
+              title="Abandon goal">&times;</button>
           </div>
         ))}
+        {active.length === 0 && !showForm && (
+          <p className="text-[11px] text-text-muted">No active goals</p>
+        )}
         {achieved.slice(0, 2).map((g) => (
           <div key={g.id} className="flex items-start gap-2 text-xs opacity-50">
             <span className="mt-1 h-1.5 w-1.5 rounded-full bg-accent-green shrink-0" />

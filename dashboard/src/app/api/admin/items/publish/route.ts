@@ -6,9 +6,12 @@ import {
   parseWzFile,
   saveWzFile,
   addEquipToCharacterWz,
+  addWeaponToCharacterWz,
   addStringsToStringWz,
   getSectionName,
+  WEAPON_TYPES,
 } from "@/lib/wz";
+import type { WeaponData, WeaponFrame } from "@/lib/wz";
 import { execSync } from "child_process";
 import { createHash, randomUUID } from "crypto";
 import { Readable } from "stream";
@@ -169,6 +172,18 @@ function generateEquipXml(item: {
     if (stats[key] && stats[key] !== 0) {
       xml += `    <int name="${wzField}" value="${stats[key]}"/>\n`;
     }
+  }
+
+  // Weapon-specific info fields
+  if (item.sub_category === "Weapon") {
+    const wt = (stats as any)._weaponType || "staff";
+    const wtMeta = WEAPON_TYPES[wt] || WEAPON_TYPES.staff;
+    xml += `    <int name="walk" value="${wtMeta.walk}"/>\n`;
+    xml += `    <int name="stand" value="${wtMeta.stand}"/>\n`;
+    xml += `    <short name="attack" value="${wtMeta.attack}"/>\n`;
+    xml += `    <string name="afterImage" value="${wtMeta.afterImage}"/>\n`;
+    xml += `    <string name="sfx" value="${wtMeta.sfx}"/>\n`;
+    xml += `    <int name="attackSpeed" value="${(stats as any)._attackSpeed || 6}"/>\n`;
   }
 
   xml += `  </imgdir>\n`;
@@ -398,14 +413,82 @@ export async function POST() {
           }
         }
 
-        addEquipToCharacterWz(charWz, {
-          itemId: item.item_id,
-          subCategory: item.sub_category,
-          stats: item.stats,
-          requirements: item.requirements,
-          flags: item.flags,
-          iconPng,
-        });
+        if (item.sub_category === "Weapon" && item.stats._weaponFrames) {
+          // Weapon with animation frames — download frames from R2 and build weapon .img
+          try {
+            const wfData = item.stats._weaponFrames as {
+              origins: Record<string, Array<{ gripX?: number; gripY?: number; x?: number; y?: number }>>;
+              frames: Record<string, string[]>;
+            };
+            const wt = item.stats._weaponType || "staff";
+            const wtMeta = WEAPON_TYPES[wt] || WEAPON_TYPES.staff;
+
+            // Download all frame PNGs
+            const animations: Record<string, WeaponFrame[]> = {};
+            for (const [animName, frameUrls] of Object.entries(wfData.frames)) {
+              const originList = wfData.origins[animName] || [];
+              animations[animName] = [];
+              for (let fi = 0; fi < frameUrls.length; fi++) {
+                try {
+                  const frameRes = await fetch(frameUrls[fi]);
+                  if (!frameRes.ok) continue;
+                  const pngBuf = Buffer.from(await frameRes.arrayBuffer());
+                  const orig = originList[fi] || { gripX: 0, gripY: 0 };
+                  const gripX = orig.gripX ?? orig.x ?? 0;
+                  const gripY = orig.gripY ?? orig.y ?? 0;
+                  const isAttack = animName.startsWith("swing") || animName.startsWith("stab") || animName.startsWith("shoot") || animName === "proneStab";
+                  animations[animName].push({
+                    pngBuf,
+                    originX: gripX,
+                    originY: gripY,
+                    attachX: 0,
+                    attachY: 0,
+                    attachType: isAttack ? "navel" : "hand",
+                    z: isAttack ? "weaponBelowBody" : "weapon",
+                  });
+                } catch {
+                  actions.push(`Warning: failed to download frame ${animName}/${fi} for ${item.name}`);
+                }
+              }
+            }
+
+            const weaponData: WeaponData = {
+              itemId: item.item_id,
+              weaponType: wt,
+              attackSpeed: item.stats._attackSpeed || 6,
+              afterImage: wtMeta.afterImage,
+              sfx: wtMeta.sfx,
+              stats: item.stats,
+              requirements: item.requirements,
+              flags: item.flags,
+              iconPng,
+              animations,
+            };
+            addWeaponToCharacterWz(charWz, weaponData);
+            actions.push(`Added weapon ${item.name} with ${Object.values(animations).flat().length} frames`);
+          } catch (err: any) {
+            actions.push(`Warning: weapon frame processing failed for ${item.name}: ${err.message}`);
+            // Fall back to simple equip (icon only)
+            addEquipToCharacterWz(charWz, {
+              itemId: item.item_id,
+              subCategory: item.sub_category,
+              stats: item.stats,
+              requirements: item.requirements,
+              flags: item.flags,
+              iconPng,
+            });
+          }
+        } else {
+          // Non-weapon equip or weapon without frames
+          addEquipToCharacterWz(charWz, {
+            itemId: item.item_id,
+            subCategory: item.sub_category,
+            stats: item.stats,
+            requirements: item.requirements,
+            flags: item.flags,
+            iconPng,
+          });
+        }
       }
       const charWzOut = join(workDir, "Character-patched.wz");
       saveWzFile(charWz, charWzOut);

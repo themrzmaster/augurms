@@ -34,6 +34,13 @@ node_modules/
 # LLM context (local only)
 CLAUDE.md
 
+# Local scripts/tools
+create_banner.py
+resize_banner.py
+ragezone-post.txt
+tools/render-weapon.py
+dashboard/test-weapon-local.ts
+
 # OS
 .DS_Store
 Thumbs.db

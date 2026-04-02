@@ -120,6 +120,28 @@ export default function ItemsPage() {
     }
   }, []);
 
+  const handleLocalPublish = useCallback(async () => {
+    if (!confirm("Local publish: patch client WZ files + server XML from DB items.\nOutput goes to dashboard/test-output/.")) return;
+    setPublishing(true);
+    setPublishResult(null);
+    try {
+      const res = await fetch("/api/admin/items/publish-local", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setPublishResult({
+          success: true,
+          message: data.actions.join("\n") + "\n\n" + (data.instructions || []).join("\n"),
+        });
+      } else {
+        setPublishResult({ success: false, message: data.error || "Local publish failed" });
+      }
+    } catch {
+      setPublishResult({ success: false, message: "Network error" });
+    } finally {
+      setPublishing(false);
+    }
+  }, []);
+
   const handleSearch = useCallback(
     (value: string) => {
       setSearchTerm(value);
@@ -157,6 +179,13 @@ export default function ItemsPage() {
           </p>
         </div>
         <div className="flex gap-3">
+          <button
+            onClick={handleLocalPublish}
+            disabled={publishing}
+            className="rounded-lg border border-accent-green/30 bg-accent-green/10 px-4 py-2 text-sm font-semibold text-accent-green hover:bg-accent-green/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {publishing ? "Publishing..." : "Local Publish"}
+          </button>
           <button
             onClick={handlePublish}
             disabled={publishing}

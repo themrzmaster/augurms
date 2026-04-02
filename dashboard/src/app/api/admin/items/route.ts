@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execute, query } from "@/lib/db";
+import { WEAPON_TYPES } from "@/lib/wz";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -90,6 +91,18 @@ function generateEquipXml(item: {
     if (stats[key] && stats[key] !== 0) {
       xml += `    <int name="${wzField}" value="${stats[key]}"/>\n`;
     }
+  }
+
+  // Weapon-specific info fields
+  if (item.sub_category === "Weapon") {
+    const wt = stats._weaponType || "staff";
+    const wtMeta = WEAPON_TYPES[wt] || WEAPON_TYPES.staff;
+    xml += `    <int name="walk" value="${wtMeta.walk}"/>\n`;
+    xml += `    <int name="stand" value="${wtMeta.stand}"/>\n`;
+    xml += `    <short name="attack" value="${wtMeta.attack}"/>\n`;
+    xml += `    <string name="afterImage" value="${wtMeta.afterImage}"/>\n`;
+    xml += `    <string name="sfx" value="${wtMeta.sfx}"/>\n`;
+    xml += `    <int name="attackSpeed" value="${stats._attackSpeed || 6}"/>\n`;
   }
 
   xml += `  </imgdir>\n`;
@@ -194,6 +207,7 @@ export async function POST(request: NextRequest) {
     const {
       item_id, name, description, category, sub_category,
       base_item_id, icon_url, stats, requirements, flags,
+      weapon_type, attack_speed, weapon_frames,
     } = body;
 
     if (!item_id || !name || !category) {
@@ -230,6 +244,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Merge weapon-specific metadata into stats
+    const finalStats = { ...(stats || {}) };
+    if (sub_category === "Weapon" && weapon_type) {
+      finalStats._weaponType = weapon_type;
+      finalStats._attackSpeed = attack_speed || 6;
+      if (weapon_frames) {
+        finalStats._weaponFrames = weapon_frames;
+      }
+    }
+
     // Save to DB
     const result = await execute(
       `INSERT INTO custom_items (item_id, name, description, category, sub_category, base_item_id, icon_url, stats, requirements, flags)
@@ -237,7 +261,7 @@ export async function POST(request: NextRequest) {
       [
         item_id, name, description || "", category,
         sub_category || "Ring", base_item_id || null, icon_url || null,
-        JSON.stringify(stats || {}),
+        JSON.stringify(finalStats),
         JSON.stringify(requirements || {}),
         JSON.stringify(flags || {}),
       ]
@@ -249,7 +273,7 @@ export async function POST(request: NextRequest) {
       try {
         const wzResult = writeEquipWzXml({
           item_id, sub_category: sub_category || "Ring",
-          stats: stats || {}, requirements: requirements || {},
+          stats: finalStats, requirements: requirements || {},
           flags: flags || {}, base_item_id,
         });
         if (wzResult.success) {

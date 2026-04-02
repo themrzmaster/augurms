@@ -1,13 +1,47 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Card from "@/components/Card";
 import SpriteImage from "@/components/SpriteImage";
+import dynamic from "next/dynamic";
+import type { RenderOutput } from "@/components/WeaponRenderer";
+
+const WeaponRenderer = dynamic(() => import("@/components/WeaponRenderer"), { ssr: false });
 
 const SUB_CATEGORIES = [
   "Ring", "Pendant", "Face", "Eye", "Earring", "Belt", "Medal",
   "Cap", "Coat", "Longcoat", "Pants", "Shoes", "Glove", "Shield", "Cape", "Weapon",
+];
+
+const WEAPON_TYPES: Record<string, { label: string; prefix: number }> = {
+  "1h-sword": { label: "One-Handed Sword", prefix: 1302 },
+  "1h-axe": { label: "One-Handed Axe", prefix: 1312 },
+  "1h-mace": { label: "One-Handed Mace", prefix: 1322 },
+  dagger: { label: "Dagger", prefix: 1332 },
+  wand: { label: "Wand", prefix: 1372 },
+  staff: { label: "Staff", prefix: 1382 },
+  "2h-sword": { label: "Two-Handed Sword", prefix: 1402 },
+  "2h-axe": { label: "Two-Handed Axe", prefix: 1412 },
+  "2h-mace": { label: "Two-Handed Mace", prefix: 1422 },
+  spear: { label: "Spear", prefix: 1432 },
+  polearm: { label: "Polearm", prefix: 1442 },
+  bow: { label: "Bow", prefix: 1452 },
+  crossbow: { label: "Crossbow", prefix: 1462 },
+  claw: { label: "Claw", prefix: 1472 },
+  knuckle: { label: "Knuckle", prefix: 1482 },
+  gun: { label: "Gun", prefix: 1492 },
+};
+
+const ATTACK_SPEEDS = [
+  { value: 2, label: "2 - Fastest" },
+  { value: 3, label: "3 - Faster" },
+  { value: 4, label: "4 - Fast" },
+  { value: 5, label: "5 - Normal+" },
+  { value: 6, label: "6 - Normal" },
+  { value: 7, label: "7 - Slow" },
+  { value: 8, label: "8 - Slower" },
+  { value: 9, label: "9 - Slowest" },
 ];
 
 const STAT_DEFS = [
@@ -52,10 +86,29 @@ export default function CreateItemPage() {
   const [idInfo, setIdInfo] = useState<string | null>(null);
   const [loadingIds, setLoadingIds] = useState(false);
 
+  // Weapon-specific state
+  const [weaponType, setWeaponType] = useState("staff");
+  const [attackSpeed, setAttackSpeed] = useState(6);
+  const [glbFile, setGlbFile] = useState<File | null>(null);
+  const [rendering, setRendering] = useState(false);
+  const [renderProgress, setRenderProgress] = useState("");
+  const [renderPct, setRenderPct] = useState(0);
+  const [renderTrigger, setRenderTrigger] = useState(0);
+  const [renderResult, setRenderResult] = useState<{
+    origins: Record<string, Array<{ gripX?: number; gripY?: number; x?: number; y?: number }>>;
+    frames: Record<string, string[]>;
+    iconUrl: string | null;
+  } | null>(null);
+  const glbInputRef = useRef<HTMLInputElement>(null);
+
+  const isWeapon = subCategory === "Weapon";
+
   const fetchAvailableIds = async (cat: string) => {
     setLoadingIds(true);
     try {
-      const res = await fetch(`/api/admin/items/next-id?subCategory=${cat}&count=5`);
+      const params = new URLSearchParams({ subCategory: cat, count: "5" });
+      if (cat === "Weapon") params.set("weaponType", weaponType);
+      const res = await fetch(`/api/admin/items/next-id?${params}`);
       const data = await res.json();
       if (data.suggested) {
         setSuggestedIds(data.suggested);
@@ -92,7 +145,6 @@ export default function CreateItemPage() {
         ctx.drawImage(img, 0, 0);
         const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
-        // Find bounding box of non-transparent pixels
         let top = canvas.height, left = canvas.width, right = 0, bottom = 0;
         for (let y = 0; y < canvas.height; y++) {
           for (let x = 0; x < canvas.width; x++) {
@@ -107,14 +159,13 @@ export default function CreateItemPage() {
         }
 
         if (right < left || bottom < top) {
-          resolve(file); // Fully transparent, return as-is
+          resolve(file);
           return;
         }
 
         const trimW = right - left + 1;
         const trimH = bottom - top + 1;
 
-        // Only trim if it actually removes something
         if (trimW === canvas.width && trimH === canvas.height) {
           resolve(file);
           return;
@@ -146,7 +197,7 @@ export default function CreateItemPage() {
 
   const uploadIcon = async (): Promise<string | null> => {
     if (!iconFile || !itemId) return iconUrl;
-    if (iconUrl) return iconUrl; // Already uploaded
+    if (iconUrl) return iconUrl;
 
     setUploading(true);
     try {
@@ -171,6 +222,67 @@ export default function CreateItemPage() {
     }
   };
 
+  const handleRenderWeapon = () => {
+    if (!glbFile || !itemId) {
+      setError("Upload a .glb file and set an Item ID first.");
+      return;
+    }
+    setRendering(true);
+    setRenderProgress("Starting...");
+    setRenderPct(0);
+    setError(null);
+    setRenderTrigger((t) => t + 1);
+  };
+
+  const handleRenderProgress = useCallback((msg: string, pct: number) => {
+    setRenderProgress(msg);
+    setRenderPct(pct);
+  }, []);
+
+  const handleRenderComplete = useCallback(async (result: RenderOutput) => {
+    // Upload frames to R2 via API
+    setRenderProgress("Uploading frames...");
+    try {
+      const res = await fetch("/api/admin/items/render-weapon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemId,
+          icon: result.iconDataUrl,
+          origins: result.origins,
+          frames: result.frames,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+
+      setRenderResult({
+        origins: data.origins,
+        frames: data.frames,
+        iconUrl: data.iconUrl,
+      });
+
+      if (data.iconUrl && !iconPreview) {
+        setIconPreview(data.iconUrl);
+        setIconUrl(data.iconUrl);
+      }
+
+      const frameCount = Object.values(data.frames as Record<string, string[]>).flat().length;
+      setSuccess(`Rendered ${frameCount} frames. ${data.message}`);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setRendering(false);
+      setRenderProgress("");
+    }
+  }, [itemId, iconPreview]);
+
+  const handleRenderError = useCallback((msg: string) => {
+    setError(msg);
+    setRendering(false);
+    setRenderProgress("");
+  }, []);
+
   const setStat = (key: string, value: string) => {
     const num = parseInt(value) || 0;
     setStats((prev) => (num === 0 ? (() => { const { [key]: _, ...rest } = prev; return rest; })() : { ...prev, [key]: num }));
@@ -190,6 +302,11 @@ export default function CreateItemPage() {
       return;
     }
 
+    if (isWeapon && !renderResult) {
+      setError("Render weapon frames before saving. Upload a .glb and click 'Render Frames'.");
+      return;
+    }
+
     setSaving(true);
     try {
       // Upload icon first if present
@@ -198,21 +315,32 @@ export default function CreateItemPage() {
         uploadedIconUrl = await uploadIcon();
       }
 
+      const body: Record<string, any> = {
+        item_id: parseInt(itemId),
+        name,
+        description,
+        category: "equip",
+        sub_category: subCategory,
+        base_item_id: baseItemId ? parseInt(baseItemId) : null,
+        icon_url: uploadedIconUrl,
+        stats,
+        requirements: reqs,
+        flags,
+      };
+
+      // Add weapon-specific data
+      if (isWeapon) {
+        body.weapon_type = weaponType;
+        body.attack_speed = attackSpeed;
+        body.weapon_frames = renderResult
+          ? { origins: renderResult.origins, frames: renderResult.frames }
+          : null;
+      }
+
       const res = await fetch("/api/admin/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          item_id: parseInt(itemId),
-          name,
-          description,
-          category: "equip",
-          sub_category: subCategory,
-          base_item_id: baseItemId ? parseInt(baseItemId) : null,
-          icon_url: uploadedIconUrl,
-          stats,
-          requirements: reqs,
-          flags,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
@@ -230,6 +358,9 @@ export default function CreateItemPage() {
   };
 
   const hasStats = Object.values(stats).some((v) => v !== 0);
+  const totalFrames = renderResult
+    ? Object.values(renderResult.frames).flat().length
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -240,7 +371,10 @@ export default function CreateItemPage() {
             Create Custom Item
           </h1>
           <p className="mt-1.5 text-text-secondary">
-            Define a new equip item with custom stats. Client will show the base item sprite until WZ is patched.
+            Define a new equip item with custom stats.{" "}
+            {isWeapon
+              ? "Upload a 3D model (.glb) to generate animation frames."
+              : "Client will show the base item sprite until WZ is patched."}
           </p>
         </div>
         <button
@@ -278,7 +412,7 @@ export default function CreateItemPage() {
                       type="number"
                       value={itemId}
                       onChange={(e) => setItemId(e.target.value)}
-                      placeholder="e.g. 1112950"
+                      placeholder={isWeapon ? `e.g. ${WEAPON_TYPES[weaponType]?.prefix || 1382}900` : "e.g. 1112950"}
                       className="flex-1 rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/30"
                     />
                     <button
@@ -307,7 +441,9 @@ export default function CreateItemPage() {
                     </div>
                   )}
                   <p className="mt-1 text-xs text-text-muted">
-                    {idInfo || "Click 'Find IDs' to see available IDs for this category."}
+                    {idInfo || (isWeapon
+                      ? `${WEAPON_TYPES[weaponType]?.label || "Weapon"} IDs: ${WEAPON_TYPES[weaponType]?.prefix || 1382}000 - ${WEAPON_TYPES[weaponType]?.prefix || 1382}999`
+                      : "Click 'Find IDs' to see available IDs for this category.")}
                   </p>
                 </div>
                 <div>
@@ -318,11 +454,13 @@ export default function CreateItemPage() {
                     type="number"
                     value={baseItemId}
                     onChange={(e) => setBaseItemId(e.target.value)}
-                    placeholder="e.g. 1112000"
+                    placeholder={isWeapon ? "Optional — frames from 3D model" : "e.g. 1112000"}
                     className="w-full rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/30"
                   />
                   <p className="mt-1 text-xs text-text-muted">
-                    Client shows this item's sprite until WZ is patched.
+                    {isWeapon
+                      ? "Optional fallback sprite. 3D model frames take priority."
+                      : "Client shows this item's sprite until WZ is patched."}
                   </p>
                 </div>
               </div>
@@ -335,7 +473,7 @@ export default function CreateItemPage() {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Augur's Blessing Ring"
+                  placeholder={isWeapon ? "Crystal Staff of Power" : "Augur's Blessing Ring"}
                   className="w-full rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/30"
                 />
               </div>
@@ -347,7 +485,9 @@ export default function CreateItemPage() {
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="A ring blessed by the Augur, granting power to those who complete quests."
+                  placeholder={isWeapon
+                    ? "A crystalline staff that channels arcane energy."
+                    : "A ring blessed by the Augur, granting power to those who complete quests."}
                   rows={2}
                   className="w-full rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/30 resize-none"
                 />
@@ -361,7 +501,15 @@ export default function CreateItemPage() {
                   {SUB_CATEGORIES.map((cat) => (
                     <button
                       key={cat}
-                      onClick={() => { setSubCategory(cat); setSuggestedIds([]); setIdInfo(null); }}
+                      onClick={() => {
+                        setSubCategory(cat);
+                        setSuggestedIds([]);
+                        setIdInfo(null);
+                        if (cat !== "Weapon") {
+                          setRenderResult(null);
+                          setGlbFile(null);
+                        }
+                      }}
                       className={`rounded-full px-3 py-1.5 text-xs font-medium border transition-all ${
                         subCategory === cat
                           ? "bg-accent-gold/10 text-accent-gold border-accent-gold/30"
@@ -375,6 +523,152 @@ export default function CreateItemPage() {
               </div>
             </div>
           </Card>
+
+          {/* Weapon Configuration — only shown when subCategory is Weapon */}
+          {isWeapon && (
+            <Card title="Weapon Configuration">
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Weapon Type
+                    </label>
+                    <select
+                      value={weaponType}
+                      onChange={(e) => {
+                        setWeaponType(e.target.value);
+                        setSuggestedIds([]);
+                        setIdInfo(null);
+                      }}
+                      className="w-full rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/30"
+                    >
+                      {Object.entries(WEAPON_TYPES).map(([key, wt]) => (
+                        <option key={key} value={key}>
+                          {wt.label} ({wt.prefix}xxx)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Attack Speed
+                    </label>
+                    <select
+                      value={attackSpeed}
+                      onChange={(e) => setAttackSpeed(parseInt(e.target.value))}
+                      className="w-full rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/30"
+                    >
+                      {ATTACK_SPEEDS.map((as) => (
+                        <option key={as.value} value={as.value}>
+                          {as.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 3D Model Upload */}
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
+                    3D Model (.glb / .gltf)
+                  </label>
+                  <input
+                    ref={glbInputRef}
+                    type="file"
+                    accept=".glb,.gltf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setGlbFile(file);
+                        setRenderResult(null);
+                      }
+                    }}
+                  />
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => glbInputRef.current?.click()}
+                      className="rounded-lg border border-border bg-bg-secondary px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:border-border-light transition-colors"
+                    >
+                      {glbFile ? glbFile.name : "Choose .glb file..."}
+                    </button>
+                    <button
+                      onClick={handleRenderWeapon}
+                      disabled={!glbFile || !itemId || rendering}
+                      className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
+                        !glbFile || !itemId || rendering
+                          ? "bg-bg-card text-text-muted border border-border cursor-not-allowed"
+                          : "bg-accent-blue text-white hover:bg-accent-blue/90"
+                      }`}
+                    >
+                      {rendering ? "Rendering..." : "Render Frames"}
+                    </button>
+                  </div>
+                  {rendering && (
+                    <div className="mt-2">
+                      <p className="text-xs text-accent-blue animate-pulse">
+                        {renderProgress || "Rendering..."}
+                      </p>
+                      {renderPct > 0 && (
+                        <div className="mt-1 h-1.5 w-full rounded-full bg-bg-secondary overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-accent-blue transition-all duration-300"
+                            style={{ width: `${renderPct}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Frame Preview */}
+                {renderResult && (
+                  <div>
+                    <label className="block text-sm font-medium text-accent-green mb-2">
+                      Rendered Frames ({totalFrames} frames)
+                    </label>
+                    <div className="space-y-3">
+                      {Object.entries(renderResult.frames).map(([animName, urls]) => (
+                        <div key={animName}>
+                          <p className="text-xs font-mono text-text-muted mb-1">
+                            {animName} ({urls.length} frames)
+                          </p>
+                          <div className="flex gap-2 flex-wrap">
+                            {urls.map((url, i) => (
+                              <div
+                                key={i}
+                                className="rounded border border-border bg-bg-secondary p-1"
+                                title={`${animName}/${i}.png`}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={url}
+                                  alt={`${animName} frame ${i}`}
+                                  className="h-16 w-auto sprite-render"
+                                  style={{ imageRendering: "pixelated" }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {/* Hidden Three.js renderer */}
+          {isWeapon && (
+            <WeaponRenderer
+              glbFile={glbFile}
+              triggerRender={renderTrigger}
+              onRenderComplete={handleRenderComplete}
+              onProgress={handleRenderProgress}
+              onError={handleRenderError}
+            />
+          )}
 
           {/* Stats */}
           <Card title="Stats">
@@ -468,6 +762,7 @@ export default function CreateItemPage() {
                     src={iconPreview}
                     alt="Custom icon"
                     className="w-16 h-16 sprite-render object-contain rounded-lg border-2 border-accent-gold/30 group-hover:border-accent-gold transition-colors"
+                    style={{ imageRendering: "pixelated" }}
                   />
                   {iconUrl && (
                     <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-accent-green text-bg-primary text-[8px] flex items-center justify-center font-bold">R2</span>
@@ -515,8 +810,14 @@ export default function CreateItemPage() {
 
               <div className="w-full border-t border-border pt-3 text-left space-y-1">
                 <p className="text-xs text-text-muted">
-                  ID: {itemId || "—"} | Type: {subCategory}
+                  ID: {itemId || "\u2014"} | Type: {subCategory}
+                  {isWeapon && ` (${WEAPON_TYPES[weaponType]?.label})`}
                 </p>
+                {isWeapon && (
+                  <p className="text-xs text-accent-blue">
+                    Attack Speed: {attackSpeed} | Frames: {totalFrames || "none"}
+                  </p>
+                )}
                 {reqs.level > 0 && (
                   <p className="text-xs text-accent-orange">
                     REQ LEV: {reqs.level}
@@ -538,12 +839,24 @@ export default function CreateItemPage() {
           {/* Item ID Ranges */}
           <Card title="ID Ranges">
             <div className="space-y-1.5 text-xs text-text-secondary">
-              <p><span className="text-text-primary font-medium">Rings:</span> 1112000 - 1112999</p>
-              <p><span className="text-text-primary font-medium">Pendants:</span> 1122000 - 1122999</p>
-              <p><span className="text-text-primary font-medium">Caps:</span> 1002000 - 1002999</p>
-              <p><span className="text-text-primary font-medium">Weapons:</span> 1302000 - 1492999</p>
+              {isWeapon ? (
+                <>
+                  {Object.entries(WEAPON_TYPES).map(([key, wt]) => (
+                    <p key={key} className={key === weaponType ? "text-accent-gold font-medium" : ""}>
+                      <span className="text-text-primary font-medium">{wt.label}:</span> {wt.prefix}000 - {wt.prefix}999
+                    </p>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <p><span className="text-text-primary font-medium">Rings:</span> 1112000 - 1112999</p>
+                  <p><span className="text-text-primary font-medium">Pendants:</span> 1122000 - 1122999</p>
+                  <p><span className="text-text-primary font-medium">Caps:</span> 1002000 - 1002999</p>
+                  <p><span className="text-text-primary font-medium">Weapons:</span> 1302000 - 1492999</p>
+                </>
+              )}
               <p className="text-text-muted mt-2">
-                Pick unused IDs near the end of a range (e.g. 1112950+).
+                Pick unused IDs near the end of a range (e.g. {isWeapon ? `${WEAPON_TYPES[weaponType]?.prefix || 1382}900+` : "1112950+"}).
               </p>
             </div>
           </Card>
@@ -551,14 +864,14 @@ export default function CreateItemPage() {
           {/* Create Button */}
           <button
             onClick={handleSubmit}
-            disabled={saving || !itemId || !name}
+            disabled={saving || !itemId || !name || (isWeapon && !renderResult)}
             className={`w-full rounded-lg px-4 py-3 text-sm font-semibold transition-all ${
-              saving || !itemId || !name
+              saving || !itemId || !name || (isWeapon && !renderResult)
                 ? "bg-bg-card text-text-muted border border-border cursor-not-allowed"
                 : "bg-accent-gold text-bg-primary hover:bg-accent-gold/90 shadow-lg shadow-accent-gold/20"
             }`}
           >
-            {saving ? "Creating..." : "Create Item"}
+            {saving ? "Creating..." : isWeapon ? "Create Weapon" : "Create Item"}
           </button>
         </div>
       </div>
@@ -567,7 +880,7 @@ export default function CreateItemPage() {
       <Card title="Publish to Client">
         <div className="space-y-4">
           <p className="text-sm text-text-secondary">
-            After creating items, export the manifest and run the WZ patcher to inject custom icons into the client files.
+            After creating items, use &quot;Publish to Server&quot; on the items page to push WZ changes to the game.
           </p>
           <div className="flex flex-wrap gap-3">
             <button
@@ -586,18 +899,6 @@ export default function CreateItemPage() {
             >
               Export Manifest JSON
             </button>
-          </div>
-          <div className="rounded-lg bg-bg-secondary border border-border p-3">
-            <p className="text-xs font-mono text-text-muted leading-relaxed">
-              <span className="text-accent-green"># 1. Export manifest from button above</span><br />
-              <span className="text-accent-green"># 2. Run the WZ patcher</span><br />
-              python3 tools/wz_patcher.py \<br />
-              {"  "}--manifest custom_items.json \<br />
-              {"  "}--wz-dir ./client/cosmic-wz<br />
-              <span className="text-accent-green"># 3. Patch Character.wz with HaRepacker using generated .img files</span><br />
-              <span className="text-accent-green"># 4. Upload patched files</span><br />
-              ./tools/publish_client.sh ./patched
-            </p>
           </div>
         </div>
       </Card>

@@ -744,11 +744,514 @@ export function buildEquipImg(equip: EquipData, ks: Buffer): Buffer {
   return w.toBuffer();
 }
 
+// ---------- Weapon .img Building ----------
+
+export interface WeaponFrame {
+  /** Raw PNG file buffer for this animation frame */
+  pngBuf: Buffer;
+  /** Origin X (anchor point in sprite, near top-left for weapons) */
+  originX: number;
+  /** Origin Y */
+  originY: number;
+  /** Attachment point X (hand grip or navel center) */
+  attachX: number;
+  /** Attachment point Y */
+  attachY: number;
+  /** Attachment type: "hand" for stand/walk, "navel" for attack animations */
+  attachType: "hand" | "navel";
+  /** Z-layer: "weapon" for stand/walk, "weaponBelowBody" for attacks */
+  z: string;
+}
+
+export interface WeaponData {
+  itemId: number;
+  weaponType: string;
+  attackSpeed: number;
+  afterImage: string;
+  sfx: string;
+  stats: Record<string, number>;
+  requirements: Record<string, number>;
+  flags: Record<string, boolean>;
+  /** Icon PNG buffer */
+  iconPng?: Buffer;
+  /** Animation name → array of frames */
+  animations: Record<string, WeaponFrame[]>;
+}
+
+/** Weapon type metadata — afterImage/sfx/attack values derived from real v83 WZ data */
+export const WEAPON_TYPES: Record<
+  string,
+  {
+    label: string; prefix: number; afterImage: string; sfx: string;
+    attack: number; walk: number; stand: number;
+    animations: string[];
+  }
+> = {
+  "1h-sword": { label: "One-Handed Sword", prefix: 1302, afterImage: "swordOL", sfx: "swordL",
+    attack: 1, walk: 1, stand: 1,
+    animations: ["walk1","stand1","alert","swingO1","swingO2","swingO3","swingOF","stabO1","stabO2","stabOF","proneStab","prone","heal","fly","jump"] },
+  "1h-axe": { label: "One-Handed Axe", prefix: 1312, afterImage: "axe", sfx: "axe",
+    attack: 1, walk: 1, stand: 1,
+    animations: ["walk1","stand1","alert","swingO1","swingO2","swingO3","swingOF","stabO1","stabO2","stabOF","proneStab","prone","heal","fly","jump"] },
+  "1h-mace": { label: "One-Handed Mace", prefix: 1322, afterImage: "mace", sfx: "mace",
+    attack: 1, walk: 1, stand: 1,
+    animations: ["walk1","stand1","alert","swingO1","swingO2","swingO3","swingOF","stabO1","stabO2","stabOF","proneStab","prone","heal","fly","jump"] },
+  dagger: { label: "Dagger", prefix: 1332, afterImage: "swordOL", sfx: "swordL",
+    attack: 1, walk: 1, stand: 1,
+    animations: ["walk1","stand1","alert","swingO1","swingO2","swingO3","swingOF","stabO1","stabO2","stabOF","proneStab","prone","heal","fly","jump"] },
+  wand: { label: "Wand", prefix: 1372, afterImage: "mace", sfx: "mace",
+    attack: 6, walk: 1, stand: 1,
+    animations: ["walk1","stand1","alert","swingO1","swingO2","swingO3","stabO1","shoot1","shootF","proneStab","prone","heal","fly","jump"] },
+  staff: { label: "Staff", prefix: 1382, afterImage: "mace", sfx: "mace",
+    attack: 6, walk: 1, stand: 1,
+    animations: ["walk1","stand1","alert","swingO1","swingO2","swingO3","stabO1","shoot1","shootF","proneStab","prone","heal","fly","jump"] },
+  "2h-sword": { label: "Two-Handed Sword", prefix: 1402, afterImage: "swordTL", sfx: "swordL",
+    attack: 5, walk: 1, stand: 2,
+    animations: ["walk1","stand2","alert","swingT1","swingT2","swingT3","swingTF","stabO1","stabO2","stabOF","proneStab","prone","heal","fly","jump"] },
+  "2h-axe": { label: "Two-Handed Axe", prefix: 1412, afterImage: "axe", sfx: "axe",
+    attack: 5, walk: 2, stand: 2,
+    animations: ["walk2","stand2","alert","swingT1","swingT2","swingT3","swingTF","stabO1","stabO2","stabOF","proneStab","prone","heal","fly","jump"] },
+  "2h-mace": { label: "Two-Handed Mace", prefix: 1422, afterImage: "mace", sfx: "mace",
+    attack: 5, walk: 2, stand: 2,
+    animations: ["walk2","stand2","alert","swingT1","swingT2","swingT3","swingTF","stabO1","stabO2","stabOF","proneStab","prone","heal","fly","jump"] },
+  spear: { label: "Spear", prefix: 1432, afterImage: "spear", sfx: "spear",
+    attack: 2, walk: 2, stand: 2,
+    animations: ["walk2","stand2","alert","swingT2","swingP1","swingP2","swingPF","stabT1","stabT2","stabTF","proneStab","prone","fly","jump"] },
+  polearm: { label: "Polearm", prefix: 1442, afterImage: "poleArm", sfx: "poleArm",
+    attack: 2, walk: 2, stand: 2,
+    animations: ["walk2","stand2","alert","swingT2","swingP1","swingP2","swingPF","stabT1","stabT2","stabTF","proneStab","prone","fly","jump"] },
+  bow: { label: "Bow", prefix: 1452, afterImage: "bow", sfx: "bow",
+    attack: 3, walk: 1, stand: 1,
+    animations: ["walk1","stand1","alert","swingT1","swingT3","shoot1","shootF","proneStab","prone","fly","jump"] },
+  crossbow: { label: "Crossbow", prefix: 1462, afterImage: "crossBow", sfx: "crossBow",
+    attack: 4, walk: 2, stand: 2,
+    animations: ["walk2","stand2","alert","swingT1","stabT1","shoot2","proneStab","prone","fly","jump"] },
+  claw: { label: "Claw", prefix: 1472, afterImage: "swordOL", sfx: "swordL",
+    attack: 7, walk: 1, stand: 1,
+    animations: ["walk1","stand1","alert","swingO1","swingO2","swingO3","swingOF","stabO1","stabO2","stabOF","proneStab","prone","heal","fly","jump"] },
+  knuckle: { label: "Knuckle", prefix: 1482, afterImage: "knuckle", sfx: "knuckle",
+    attack: 8, walk: 1, stand: 1,
+    animations: ["walk1","stand1","alert","swingO1","swingO2","swingO3","swingOF","stabO1","stabO2","stabOF","proneStab","prone","heal","fly","jump"] },
+  gun: { label: "Gun", prefix: 1492, afterImage: "gun", sfx: "gun",
+    attack: 9, walk: 1, stand: 1,
+    animations: ["walk1","stand1","alert","swingO2","swingO3","swingOF","swingT1","swingT2","swingT3","swingTF","swingP1","swingP2","swingPF","stabT1","stabT2","stabTF","stabO1","stabO2","stabOF","shoot1","shoot2","shootF","proneStab","prone","heal","fly","jump"] },
+};
+
+/** Create a 1x1 transparent PNG buffer for placeholder animation frames */
+function createPlaceholderPng(): Buffer {
+  const png = new PNG({ width: 1, height: 1 });
+  png.data[0] = 0; png.data[1] = 0; png.data[2] = 0; png.data[3] = 0;
+  return PNG.sync.write(png);
+}
+
+/** Max pixel dimension for weapon sprites (real weapons are ≤69px) */
+const MAX_WEAPON_DIM = 70;
+
+/** Downscale a PNG buffer if either dimension exceeds MAX_WEAPON_DIM.
+ *  Returns { pngBuf, scaleX, scaleY } where scale factors allow adjusting origin/attach. */
+function clampWeaponFrame(pngBuf: Buffer): { pngBuf: Buffer; scale: number } {
+  const src = PNG.sync.read(pngBuf);
+  const maxDim = Math.max(src.width, src.height);
+  if (maxDim <= MAX_WEAPON_DIM) return { pngBuf, scale: 1 };
+
+  const scale = MAX_WEAPON_DIM / maxDim;
+  const dw = Math.max(1, Math.round(src.width * scale));
+  const dh = Math.max(1, Math.round(src.height * scale));
+  const dst = new PNG({ width: dw, height: dh });
+
+  // Nearest-neighbor downscale (pixel art style)
+  for (let dy = 0; dy < dh; dy++) {
+    const sy = Math.min(Math.floor(dy / scale), src.height - 1);
+    for (let dx = 0; dx < dw; dx++) {
+      const sx = Math.min(Math.floor(dx / scale), src.width - 1);
+      const si = (sy * src.width + sx) * 4;
+      const di = (dy * dw + dx) * 4;
+      dst.data[di] = src.data[si];
+      dst.data[di + 1] = src.data[si + 1];
+      dst.data[di + 2] = src.data[si + 2];
+      dst.data[di + 3] = src.data[si + 3];
+    }
+  }
+  return { pngBuf: PNG.sync.write(dst), scale };
+}
+
+/** Write a Vector2D extended property */
+function writeVector(w: ImgWriter, name: string, x: number, y: number) {
+  w.writeStringBlock(name, 0x00, 0x01);
+  w.writeByte(9); // extended
+  const lenPos = w.pos;
+  w.writeInt32(0); // placeholder
+  w.writeStringBlock("Shape2D#Vector2D", 0x73, 0x1b);
+  w.writeCompressedInt(x);
+  w.writeCompressedInt(y);
+  w.patchInt32(lenPos, w.pos - lenPos - 4);
+}
+
+/** Write a canvas property with pixel data, sub-properties, and attachment point */
+function writeWeaponCanvas(
+  w: ImgWriter,
+  name: string,
+  icon: DecodedIcon,
+  originX: number,
+  originY: number,
+  attachX: number,
+  attachY: number,
+  attachType: "hand" | "navel",
+  zLayer: string
+) {
+  w.writeStringBlock(name, 0x00, 0x01);
+  w.writeByte(9); // extended
+  const canvasLenPos = w.pos;
+  w.writeInt32(0); // placeholder
+
+  w.writeStringBlock("Canvas", 0x73, 0x1b);
+  w.writeByte(0); // unknown
+  w.writeByte(1); // has sub-properties
+  w.writeUInt16(0); // reserved
+  w.writeCompressedInt(3); // 3 sub-props: origin, map, z
+
+  // origin vector
+  writeVector(w, "origin", originX, originY);
+
+  // map sub-property containing attachment vector (hand or navel)
+  w.writeStringBlock("map", 0x00, 0x01);
+  w.writeByte(9); // extended
+  const mapLenPos = w.pos;
+  w.writeInt32(0); // placeholder
+  w.writeStringBlock("Property", 0x73, 0x1b);
+  w.writeUInt16(0); // reserved
+  w.writeCompressedInt(1); // 1 child
+  writeVector(w, attachType, attachX, attachY);
+  w.patchInt32(mapLenPos, w.pos - mapLenPos - 4);
+
+  // z string
+  w.writeStringBlock("z", 0x00, 0x01);
+  w.writeByte(8); // string type
+  w.writeStringBlock(zLayer, 0x00, 0x01);
+
+  // Canvas pixel data
+  w.writeCompressedInt(icon.width);
+  w.writeCompressedInt(icon.height);
+  w.writeCompressedInt(1); // format1 (BGRA4444)
+  w.writeCompressedInt(0); // format2
+  w.writeInt32(0); // reserved
+  const compressed = deflateSync(icon.pixels);
+  w.writeInt32(compressed.length + 1);
+  w.writeByte(0); // header
+  w.writeBytes(compressed);
+
+  w.patchInt32(canvasLenPos, w.pos - canvasLenPos - 4);
+}
+
+/** Write a simple icon canvas (origin only, no map/z) */
+function writeIconCanvas(
+  w: ImgWriter,
+  name: string,
+  icon: DecodedIcon,
+  originX: number,
+  originY: number
+) {
+  w.writeStringBlock(name, 0x00, 0x01);
+  w.writeByte(9); // extended
+  const canvasLenPos = w.pos;
+  w.writeInt32(0); // placeholder
+
+  w.writeStringBlock("Canvas", 0x73, 0x1b);
+  w.writeByte(0); // unknown
+  w.writeByte(1); // has sub-properties
+  w.writeUInt16(0); // reserved
+  w.writeCompressedInt(1); // 1 sub-prop: origin
+  writeVector(w, "origin", originX, originY);
+
+  w.writeCompressedInt(icon.width);
+  w.writeCompressedInt(icon.height);
+  w.writeCompressedInt(1); // BGRA4444
+  w.writeCompressedInt(0);
+  w.writeInt32(0);
+  const compressed = deflateSync(icon.pixels);
+  w.writeInt32(compressed.length + 1);
+  w.writeByte(0);
+  w.writeBytes(compressed);
+
+  w.patchInt32(canvasLenPos, w.pos - canvasLenPos - 4);
+}
+
+/** Build a complete weapon .img binary blob with animation frames */
+export function buildWeaponImg(weapon: WeaponData, ks: Buffer): Buffer {
+  const w = new ImgWriter(ks);
+  const stats = weapon.stats || {};
+  const reqs = weapon.requirements || {};
+  const flags = weapon.flags || {};
+
+  // Decode icon
+  const icon: DecodedIcon = weapon.iconPng
+    ? decodePngToIcon(weapon.iconPng)
+    : { width: 1, height: 1, pixels: Buffer.from([0x00, 0x00]) };
+
+  // Build complete animation list: use required animations from WEAPON_TYPES,
+  // filling missing ones by reusing frames from similar existing animations
+  const wtMetaForAnims = WEAPON_TYPES[weapon.weaponType];
+  const requiredAnims = wtMetaForAnims?.animations ?? Object.keys(weapon.animations);
+
+  // Fallback mapping: missing anim → try these existing anims in order
+  const ANIM_FALLBACKS: Record<string, string[]> = {
+    alert:     ["stand1", "stand2"],
+    prone:     ["proneStab", "stabO1", "stand1", "stand2"],
+    heal:      ["alert", "stand1", "stand2"],
+    fly:       ["stand1", "stand2", "alert"],
+    jump:      ["stand1", "stand2", "alert"],
+    swingO3:   ["swingO1", "swingO2", "swingOF"],
+    swingOF:   ["swingO1", "swingO2", "swingO3"],
+    stabO2:    ["stabO1", "stabOF"],
+    stabOF:    ["stabO1", "stabO2"],
+    shoot1:    ["stabO1", "alert", "stand1"],
+    shootF:    ["shoot1", "stabO1", "alert", "stand1"],
+    shoot2:    ["shoot1", "stabO1"],
+    proneStab: ["stabO1", "stabO2"],
+    swingT1:   ["swingO1", "swingO2"],
+    swingT2:   ["swingO2", "swingO1"],
+    swingT3:   ["swingO3", "swingO1"],
+    swingTF:   ["swingOF", "swingO1"],
+    swingP1:   ["swingO1", "swingT1"],
+    swingP2:   ["swingO2", "swingT2"],
+    swingPF:   ["swingOF", "swingTF"],
+    stabT1:    ["stabO1"],
+    stabT2:    ["stabO2", "stabO1"],
+    stabTF:    ["stabOF", "stabO1"],
+    walk2:     ["walk1"],
+    stand2:    ["stand1"],
+  };
+
+  // Find first available fallback frames for a missing animation
+  function findFallbackFrames(animName: string): WeaponFrame[] | null {
+    const fallbacks = ANIM_FALLBACKS[animName] || [];
+    for (const fb of fallbacks) {
+      if (weapon.animations[fb]?.length > 0) {
+        return weapon.animations[fb];
+      }
+    }
+    // Last resort: use first frame from any available animation
+    for (const frames of Object.values(weapon.animations)) {
+      if (frames.length > 0) return [frames[0]];
+    }
+    return null;
+  }
+
+  // Merge: use provided frames where available, fallback for missing
+  const allAnimations: Record<string, WeaponFrame[]> = {};
+  for (const animName of requiredAnims) {
+    if (weapon.animations[animName]?.length > 0) {
+      allAnimations[animName] = weapon.animations[animName];
+    } else {
+      const fallback = findFallbackFrames(animName);
+      if (fallback) {
+        // Reuse fallback frames but adjust attachment type for this animation
+        const isAttack = animName.startsWith("swing") || animName.startsWith("stab") ||
+          animName.startsWith("shoot") || animName === "proneStab";
+        allAnimations[animName] = fallback.map(f => ({
+          ...f,
+          attachType: isAttack ? "navel" as const : "hand" as const,
+          z: isAttack ? "weaponBelowBody" : "weapon",
+        }));
+      } else {
+        // Absolute fallback: 1x1 transparent (should never happen if any frames exist)
+        const placeholderPng = createPlaceholderPng();
+        allAnimations[animName] = [{
+          pngBuf: placeholderPng,
+          originX: 0, originY: 0,
+          attachX: 0, attachY: 0,
+          attachType: "hand",
+          z: "weapon",
+        }];
+      }
+    }
+  }
+
+  const animNames = Object.keys(allAnimations);
+
+  // Root Property: info + each animation directory
+  const rootChildCount = 1 + animNames.length;
+
+  w.writeStringBlock("Property", 0x73, 0x1b);
+  w.writeUInt16(0); // reserved
+  w.writeCompressedInt(rootChildCount);
+
+  // --- info sub-property ---
+  // Look up weapon type metadata for correct attack/walk/stand values
+  const wtMeta = WEAPON_TYPES[weapon.weaponType];
+  const attackCode = wtMeta?.attack ?? 1;
+  const walkVal = wtMeta?.walk ?? 1;
+  const standVal = wtMeta?.stand ?? 1;
+
+  const infoProps: Array<{
+    name: string;
+    type: "int" | "short" | "string" | "canvas";
+    value: number | string;
+  }> = [];
+
+  infoProps.push({ name: "icon", type: "canvas", value: 0 });
+  infoProps.push({ name: "iconRaw", type: "canvas", value: 0 });
+
+  infoProps.push({ name: "islot", type: "string", value: "Wp" });
+  infoProps.push({ name: "vslot", type: "string", value: "Wp" });
+  infoProps.push({ name: "walk", type: "int", value: walkVal });
+  infoProps.push({ name: "stand", type: "int", value: standVal });
+  infoProps.push({ name: "attack", type: "short", value: attackCode });
+  infoProps.push({ name: "attackSpeed", type: "int", value: weapon.attackSpeed });
+  infoProps.push({ name: "afterImage", type: "string", value: weapon.afterImage });
+  infoProps.push({ name: "sfx", type: "string", value: weapon.sfx });
+
+  // Requirements
+  infoProps.push({ name: "reqJob", type: "int", value: reqs.job ?? 0 });
+  infoProps.push({ name: "reqLevel", type: "int", value: reqs.level ?? 0 });
+  infoProps.push({ name: "reqSTR", type: "int", value: reqs.str ?? 0 });
+  infoProps.push({ name: "reqDEX", type: "int", value: reqs.dex ?? 0 });
+  infoProps.push({ name: "reqINT", type: "int", value: reqs.int ?? 0 });
+  infoProps.push({ name: "reqLUK", type: "int", value: reqs.luk ?? 0 });
+
+  infoProps.push({ name: "cash", type: "int", value: flags.cash ? 1 : 0 });
+  infoProps.push({ name: "tuc", type: "int", value: stats.slots ?? 7 });
+  if (flags.tradeBlock) infoProps.push({ name: "tradeBlock", type: "int", value: 1 });
+  if (flags.only) infoProps.push({ name: "only", type: "int", value: 1 });
+  if (flags.notSale) infoProps.push({ name: "notSale", type: "int", value: 1 });
+
+  // Stats
+  for (const [key, wzField] of Object.entries(STAT_FIELDS)) {
+    if (stats[key] && stats[key] !== 0) {
+      infoProps.push({ name: wzField, type: "int", value: stats[key] });
+    }
+  }
+
+  // Write info
+  w.writeStringBlock("info", 0x00, 0x01);
+  w.writeByte(9); // extended
+  const infoLenPos = w.pos;
+  w.writeInt32(0); // placeholder
+
+  w.writeStringBlock("Property", 0x73, 0x1b);
+  w.writeUInt16(0);
+  w.writeCompressedInt(infoProps.length);
+
+  for (const prop of infoProps) {
+    if (prop.type === "canvas") {
+      writeIconCanvas(w, prop.name, icon, -4, icon.height);
+    } else if (prop.type === "short") {
+      w.writeStringBlock(prop.name, 0x00, 0x01);
+      w.writeByte(2); // WzShortProperty
+      w.writeInt16(prop.value as number);
+    } else if (prop.type === "int") {
+      w.writeStringBlock(prop.name, 0x00, 0x01);
+      w.writeByte(3);
+      w.writeCompressedInt(prop.value as number);
+    } else {
+      w.writeStringBlock(prop.name, 0x00, 0x01);
+      w.writeByte(8);
+      w.writeStringBlock(prop.value as string, 0x00, 0x01);
+    }
+  }
+
+  w.patchInt32(infoLenPos, w.pos - infoLenPos - 4);
+
+  // --- Animation directories ---
+  for (const animName of animNames) {
+    const frames = allAnimations[animName];
+
+    w.writeStringBlock(animName, 0x00, 0x01);
+    w.writeByte(9); // extended
+    const animLenPos = w.pos;
+    w.writeInt32(0); // placeholder
+
+    w.writeStringBlock("Property", 0x73, 0x1b);
+    w.writeUInt16(0);
+    w.writeCompressedInt(frames.length);
+
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      // Downscale oversized frames to match real weapon sprite sizes
+      const clamped = clampWeaponFrame(frame.pngBuf);
+      const frameIcon = decodePngToIcon(clamped.pngBuf);
+      const originX = Math.round(frame.originX * clamped.scale);
+      const originY = Math.round(frame.originY * clamped.scale);
+      const attachX = Math.round(frame.attachX * clamped.scale);
+      const attachY = Math.round(frame.attachY * clamped.scale);
+
+      // Frame sub-property "0", "1", "2", ...
+      w.writeStringBlock(String(i), 0x00, 0x01);
+      w.writeByte(9); // extended
+      const frameLenPos = w.pos;
+      w.writeInt32(0); // placeholder
+
+      w.writeStringBlock("Property", 0x73, 0x1b);
+      w.writeUInt16(0);
+      w.writeCompressedInt(1); // 1 child: "weapon" canvas
+
+      // Write the weapon canvas with origin, attachment, z
+      writeWeaponCanvas(
+        w,
+        "weapon",
+        frameIcon,
+        originX,
+        originY,
+        attachX,
+        attachY,
+        frame.attachType,
+        frame.z
+      );
+
+      w.patchInt32(frameLenPos, w.pos - frameLenPos - 4);
+    }
+
+    w.patchInt32(animLenPos, w.pos - animLenPos - 4);
+  }
+
+  return w.toBuffer();
+}
+
+/** Add a custom weapon to a parsed Character.wz */
+export function addWeaponToCharacterWz(
+  wzInfo: WzFileInfo,
+  weapon: WeaponData
+): void {
+  const imgName = `${padItemId(weapon.itemId)}.img`;
+
+  // Find or create the Weapon subdirectory
+  let subDir = wzInfo.root.find(
+    (e) => e.type === "dir" && e.name === "Weapon"
+  );
+  if (!subDir) {
+    subDir = {
+      type: "dir",
+      name: "Weapon",
+      blockSize: 0,
+      checksum: 0,
+      offset: 0,
+      children: [],
+    };
+    wzInfo.root.push(subDir);
+  }
+
+  if (subDir.children?.some((e) => e.name === imgName)) return;
+
+  const imgData = buildWeaponImg(weapon, wzInfo.keyStream);
+  const checksum = computeChecksum(imgData);
+
+  subDir.children!.push({
+    type: "img",
+    name: imgName,
+    blockSize: imgData.length,
+    checksum,
+    offset: 0,
+    data: imgData,
+  });
+}
+
 /** Minimal writer for .img serialization (no offset encryption needed) */
 class ImgWriter {
   private buf: Buffer;
   public pos: number;
   private ks: Buffer;
+  /** String pool: string → position of WzString start (for reference-based caching) */
+  private stringPool: Map<string, number> = new Map();
 
   constructor(ks: Buffer) {
     this.buf = Buffer.alloc(4096);
@@ -767,6 +1270,11 @@ class ImgWriter {
   writeByte(v: number) {
     this.ensure(1);
     this.buf[this.pos++] = v & 0xff;
+  }
+  writeInt16(v: number) {
+    this.ensure(2);
+    this.buf.writeInt16LE(v, this.pos);
+    this.pos += 2;
   }
   writeUInt16(v: number) {
     this.ensure(2);
@@ -814,9 +1322,19 @@ class ImgWriter {
     }
   }
 
-  writeStringBlock(s: string, withoutOffset: number, _withOffset: number) {
-    this.writeByte(withoutOffset);
-    this.writeWzString(s);
+  writeStringBlock(s: string, withoutOffset: number, withOffset: number) {
+    // String pool: if string was seen before and length > 4, write reference
+    if (s.length > 4 && this.stringPool.has(s)) {
+      this.writeByte(withOffset);
+      this.writeInt32(this.stringPool.get(s)!);
+    } else {
+      this.writeByte(withoutOffset);
+      const strStart = this.pos; // position where WzString starts
+      this.writeWzString(s);
+      if (!this.stringPool.has(s)) {
+        this.stringPool.set(s, strStart);
+      }
+    }
   }
 
   patchInt32(pos: number, value: number) {

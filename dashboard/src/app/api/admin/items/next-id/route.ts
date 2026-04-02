@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { WEAPON_TYPES } from "@/lib/wz";
 import { readdirSync, existsSync } from "fs";
 import { join } from "path";
 
@@ -22,18 +23,40 @@ const ID_RANGES: Record<string, { start: number; end: number; dir: string }> = {
   Glove:     { start: 1080000, end: 1082999, dir: "Character.wz/Glove" },
   Shield:    { start: 1092000, end: 1092999, dir: "Character.wz/Shield" },
   Cape:      { start: 1102000, end: 1102999, dir: "Character.wz/Cape" },
-  Weapon:    { start: 1302000, end: 1492999, dir: "Character.wz/Weapon" },
 };
 
 // GET: Find next available item ID for a sub-category
 // ?subCategory=Ring&count=5  →  returns 5 available IDs
+// ?subCategory=Weapon&weaponType=staff&count=5  →  returns IDs in 1382xxx range
 export async function GET(request: NextRequest) {
   const subCategory = request.nextUrl.searchParams.get("subCategory") || "Ring";
+  const weaponTypeParam = request.nextUrl.searchParams.get("weaponType");
   const count = Math.min(parseInt(request.nextUrl.searchParams.get("count") || "5"), 20);
 
-  const range = ID_RANGES[subCategory];
-  if (!range) {
-    return NextResponse.json({ error: `Unknown sub-category: ${subCategory}` }, { status: 400 });
+  // For weapons, scope to the specific weapon type's ID range
+  let range: { start: number; end: number; dir: string };
+  if (subCategory === "Weapon") {
+    const wt = weaponTypeParam && WEAPON_TYPES[weaponTypeParam]
+      ? WEAPON_TYPES[weaponTypeParam]
+      : null;
+    if (!wt) {
+      return NextResponse.json({
+        error: `Weapon type required. Valid types: ${Object.keys(WEAPON_TYPES).join(", ")}`,
+      }, { status: 400 });
+    }
+    // Each weapon type has a 4-digit prefix (e.g., 1382 for staff)
+    // IDs are 7 digits: prefix * 1000 + 000..999
+    range = {
+      start: wt.prefix * 1000,
+      end: wt.prefix * 1000 + 999,
+      dir: "Character.wz/Weapon",
+    };
+  } else {
+    const r = ID_RANGES[subCategory];
+    if (!r) {
+      return NextResponse.json({ error: `Unknown sub-category: ${subCategory}` }, { status: 400 });
+    }
+    range = r;
   }
 
   try {
@@ -69,6 +92,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       subCategory,
+      ...(weaponTypeParam ? { weaponType: weaponTypeParam } : {}),
       range: { start: range.start, end: range.end },
       wzUsedCount: wzUsed.size,
       customUsedCount: customUsed.size,
