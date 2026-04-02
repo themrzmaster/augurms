@@ -138,22 +138,7 @@ export async function GET() {
       if (s.changes_made === 0) continue;
       seenSessions.add(s.id);
 
-      // Try summary first (stripped of markdown)
-      if (s.summary) {
-        const cleaned = stripMarkdown(s.summary);
-        // Extract the first meaningful sentence/line
-        const firstLine = cleaned.split("\n").find(l => hasContent(l))?.trim();
-        if (firstLine && hasContent(firstLine)) {
-          news.push({
-            type: "update",
-            text: firstLine.length > 200 ? firstLine.slice(0, 200) + "..." : firstLine,
-            date: s.started_at,
-          });
-          continue;
-        }
-      }
-
-      // Fallback: describe the session's actions
+      // Prefer structured action descriptions (always clean, no boilerplate)
       const sessionActions = actionsBySession[s.id] || [];
       if (sessionActions.length > 0) {
         const descriptions = sessionActions.slice(0, 3).map(a => describeAction(a.tool_name, a.tool_input));
@@ -162,6 +147,20 @@ export async function GET() {
           text: descriptions.join(". "),
           date: s.started_at,
         });
+        continue;
+      }
+
+      // Fallback to summary only if no actions found
+      if (s.summary) {
+        const cleaned = stripMarkdown(s.summary);
+        const firstLine = cleaned.split("\n").find(l => hasContent(l))?.trim();
+        if (firstLine && hasContent(firstLine)) {
+          news.push({
+            type: "update",
+            text: firstLine.length > 200 ? firstLine.slice(0, 200) + "..." : firstLine,
+            date: s.started_at,
+          });
+        }
       }
     }
 

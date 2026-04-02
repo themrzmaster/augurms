@@ -46,4 +46,4 @@ else
   echo "WZ files up to date${LOCAL_VER:+ ($LOCAL_VER)}"
 fi
 
-exec java -jar ./Server.jar
+exec java -Xmx1280m -Xms512m -jar ./Server.jar

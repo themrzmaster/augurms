@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Build WHERE clause
-    const conditions = ["c.gm = 0", "c.name != 'admin'"]; // Exclude GMs and admin
+    const conditions = ["c.name != 'admin'"]; // Exclude admin
     const params: any[] = [];
 
     if (job) {
