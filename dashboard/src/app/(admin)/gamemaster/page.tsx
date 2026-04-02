@@ -546,7 +546,7 @@ function PastSessionCard({ session, isScheduled, onRetry }: { session: PastSessi
           )}
           {session.status === "error" && onRetry && (
             <button
-              onClick={(e) => { e.stopPropagation(); onRetry(session.prompt || "Review server health and make adjustments as needed."); }}
+              onClick={(e) => { e.stopPropagation(); onRetry("Review server health and make adjustments as needed."); }}
               className="mt-2 rounded-md bg-accent-red/10 border border-accent-red/20 px-3 py-1.5 text-[11px] font-semibold text-accent-red hover:bg-accent-red/20 transition-colors"
             >
               Retry
