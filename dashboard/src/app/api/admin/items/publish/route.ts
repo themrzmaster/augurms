@@ -32,6 +32,38 @@ const R2_PUBLIC_URL =
   process.env.R2_PUBLIC_URL ||
   "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev";
 
+const STATUS_DIR = process.env.COSMIC_ROOT || "/cosmic";
+const STATUS_FILE = join(STATUS_DIR, "publish-status.json");
+
+// --- Status helpers ---
+
+interface PublishStatus {
+  id: string;
+  status: "running" | "done" | "error";
+  step: string;
+  actions: string[];
+  error?: string;
+  startedAt: string;
+  finishedAt?: string;
+  items_published?: number;
+  version?: string;
+}
+
+function writeStatus(s: PublishStatus) {
+  try {
+    writeFileSync(STATUS_FILE, JSON.stringify(s), "utf-8");
+  } catch {}
+}
+
+function readStatus(): PublishStatus | null {
+  try {
+    if (!existsSync(STATUS_FILE)) return null;
+    return JSON.parse(readFileSync(STATUS_FILE, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
 // --- Helpers ---
 
 async function streamDownload(url: string, outputPath: string): Promise<void> {
@@ -43,7 +75,7 @@ async function streamDownload(url: string, outputPath: string): Promise<void> {
   await pipeline(readable, createWriteStream(outputPath));
 }
 
-// --- WZ XML generation (shared with items route) ---
+// --- WZ XML generation ---
 
 const SUB_CATEGORY_DIRS: Record<string, string> = {
   Ring: "Character.wz/Ring",
@@ -174,7 +206,6 @@ function generateEquipXml(item: {
     }
   }
 
-  // Weapon-specific info fields
   if (item.sub_category === "Weapon") {
     const wt = (stats as any)._weaponType || "staff";
     const wtMeta = WEAPON_TYPES[wt] || WEAPON_TYPES.staff;
@@ -227,7 +258,7 @@ function addToStringWz(
     let content = readFileSync(stringPath, "utf-8");
 
     if (content.includes(`<imgdir name="${itemId}">`)) {
-      return { success: true }; // Already exists
+      return { success: true };
     }
 
     const sectionName = STRING_SECTIONS[subCategory] || "Accessory";
@@ -261,21 +292,27 @@ function addToStringWz(
   }
 }
 
-// --- Publish endpoint ---
+// --- Background publish job ---
 
-export async function POST() {
-  if (!isR2Configured()) {
-    return NextResponse.json(
-      { error: "R2 credentials not configured" },
-      { status: 500 }
-    );
+async function runPublishJob(jobId: string) {
+  const workDir = join(tmpdir(), `publish-${jobId}`);
+  const status: PublishStatus = {
+    id: jobId,
+    status: "running",
+    step: "Starting...",
+    actions: [],
+    startedAt: new Date().toISOString(),
+  };
+
+  function update(step: string, action?: string) {
+    status.step = step;
+    if (action) status.actions.push(action);
+    writeStatus(status);
   }
-
-  const workDir = join(tmpdir(), `publish-${randomUUID()}`);
-  const actions: string[] = [];
 
   try {
     // 1. Fetch custom equip items from DB
+    update("Fetching custom items from database...");
     const rows = await query(
       "SELECT * FROM custom_items WHERE category = 'equip' ORDER BY item_id"
     );
@@ -296,14 +333,16 @@ export async function POST() {
     }));
 
     if (items.length === 0) {
-      return NextResponse.json(
-        { error: "No custom equip items to publish" },
-        { status: 400 }
-      );
+      status.status = "error";
+      status.error = "No custom equip items to publish";
+      status.finishedAt = new Date().toISOString();
+      writeStatus(status);
+      return;
     }
-    actions.push(`Found ${items.length} custom equip item(s)`);
+    update("Fetched items", `Found ${items.length} custom equip item(s)`);
 
     // 2. Download server-wz.tar.gz from R2
+    update("Downloading server WZ files...");
     mkdirSync(workDir, { recursive: true });
     const tarPath = join(workDir, "server-wz.tar.gz");
     const wzUrl = `${R2_PUBLIC_URL}/server-wz.tar.gz`;
@@ -316,30 +355,33 @@ export async function POST() {
     }
     const tarBuffer = Buffer.from(await downloadRes.arrayBuffer());
     writeFileSync(tarPath, tarBuffer);
-    actions.push(
+    update(
+      "Downloaded server WZ",
       `Downloaded server-wz.tar.gz (${(tarBuffer.length / 1024 / 1024).toFixed(1)}MB)`
     );
 
     // 3. Extract
-    execSync(`tar xzf "${tarPath}" -C "${workDir}"`, { timeout: 60000 });
-    actions.push("Extracted WZ files");
+    update("Extracting WZ files...");
+    execSync(`tar xzf "${tarPath}" -C "${workDir}"`, { timeout: 300000 });
+    update("Extracted", "Extracted WZ files");
 
     const wzRoot = join(workDir, "wz");
     if (!existsSync(wzRoot)) {
-      throw new Error(
-        "Extracted tar does not contain wz/ directory"
-      );
+      throw new Error("Extracted tar does not contain wz/ directory");
     }
 
     // 4. Generate and inject XML for each item
+    update("Generating server XML...");
     for (const item of items) {
       const xmlPath = writeEquipXml(wzRoot, item);
-      actions.push(
+      update(
+        `Writing ${item.name}...`,
         `Wrote ${item.name} (${item.item_id}) → ${xmlPath.replace(workDir + "/", "")}`
       );
     }
 
     // 5. Update String.wz/Eqp.img.xml with names
+    update("Updating item names...");
     for (const item of items) {
       const result = addToStringWz(
         wzRoot,
@@ -349,72 +391,75 @@ export async function POST() {
         item.sub_category
       );
       if (!result.success) {
-        actions.push(
+        update(
+          "String.wz warning",
           `Warning: String.wz update failed for ${item.name}: ${result.error}`
         );
       }
     }
-    actions.push("Updated String.wz/Eqp.img.xml with item names");
+    update("Updated names", "Updated String.wz/Eqp.img.xml with item names");
 
-    // 6. Repack tar (exclude macOS metadata files)
+    // 6. Repack tar
+    update("Repacking server WZ...");
     const newTarPath = join(workDir, "server-wz-new.tar.gz");
     execSync(
       `cd "${workDir}" && COPYFILE_DISABLE=1 tar czf "${newTarPath}" --exclude='.DS_Store' --exclude='._*' wz/`,
-      { timeout: 120000 }
+      { timeout: 300000 }
     );
     const newTarBuffer = readFileSync(newTarPath);
-    actions.push(
+    update(
+      "Repacked",
       `Repacked server-wz.tar.gz (${(newTarBuffer.length / 1024 / 1024).toFixed(1)}MB)`
     );
 
     // 7. Upload new tar to R2
+    update("Uploading server WZ to R2...");
     const uploadResult = await uploadToR2("server-wz.tar.gz", newTarBuffer);
     if (!uploadResult.success) {
       throw new Error(`R2 upload failed: ${uploadResult.error}`);
     }
-    actions.push("Uploaded server-wz.tar.gz to R2");
+    update("Uploaded server WZ", "Uploaded server-wz.tar.gz to R2");
 
-    // 8. Upload version marker so server knows to refresh
+    // 8. Upload version marker
     const version = new Date().toISOString();
     const versionResult = await uploadToR2(
       "server-wz.version",
       Buffer.from(version)
     );
-    if (!versionResult.success) {
-      actions.push(
-        `Warning: version marker upload failed: ${versionResult.error}`
-      );
-    } else {
-      actions.push(`Uploaded version marker: ${version}`);
+    if (versionResult.success) {
+      update("Version marker", `Uploaded version marker: ${version}`);
     }
 
-    // 9. Patch client WZ files (Character.wz + String.wz)
+    // 9. Patch client WZ files
     const manifestUpdates: Record<string, { hash: string; size: number }> = {};
     try {
-      // 9a. Download and patch Character.wz (streamed to disk — 206MB)
+      // 9a. Download and patch Character.wz
+      update("Downloading Character.wz (~200MB)...");
       const charWzPath = join(workDir, "Character.wz");
       const charWzUrl = `${R2_PUBLIC_URL}/Character.wz`;
       await streamDownload(charWzUrl, charWzPath);
-      actions.push(`Downloaded Character.wz (${(statSync(charWzPath).size / 1024 / 1024).toFixed(0)}MB)`);
+      update(
+        "Downloaded Character.wz",
+        `Downloaded Character.wz (${(statSync(charWzPath).size / 1024 / 1024).toFixed(0)}MB)`
+      );
 
+      update("Patching Character.wz...");
       const charWz = parseWzFile(charWzPath);
       for (const item of items) {
-        // Download icon PNG if available
         let iconPng: Buffer | undefined;
         if (item.icon_url) {
           try {
             const iconRes = await fetch(item.icon_url);
             if (iconRes.ok) {
               iconPng = Buffer.from(await iconRes.arrayBuffer());
-              actions.push(`Downloaded icon for ${item.name}`);
+              update(`Icon for ${item.name}`, `Downloaded icon for ${item.name}`);
             }
           } catch {
-            actions.push(`Warning: failed to download icon for ${item.name}`);
+            update("Icon warning", `Warning: failed to download icon for ${item.name}`);
           }
         }
 
         if (item.sub_category === "Weapon" && item.stats._weaponFrames) {
-          // Weapon with animation frames — download frames from R2 and build weapon .img
           try {
             const wfData = item.stats._weaponFrames as {
               origins: Record<string, Array<{ gripX?: number; gripY?: number; x?: number; y?: number }>>;
@@ -423,7 +468,6 @@ export async function POST() {
             const wt = item.stats._weaponType || "staff";
             const wtMeta = WEAPON_TYPES[wt] || WEAPON_TYPES.staff;
 
-            // Download all frame PNGs
             const animations: Record<string, WeaponFrame[]> = {};
             for (const [animName, frameUrls] of Object.entries(wfData.frames)) {
               const originList = wfData.origins[animName] || [];
@@ -447,7 +491,7 @@ export async function POST() {
                     z: isAttack ? "weaponBelowBody" : "weapon",
                   });
                 } catch {
-                  actions.push(`Warning: failed to download frame ${animName}/${fi} for ${item.name}`);
+                  update("Frame warning", `Warning: failed to download frame ${animName}/${fi} for ${item.name}`);
                 }
               }
             }
@@ -465,10 +509,12 @@ export async function POST() {
               animations,
             };
             addWeaponToCharacterWz(charWz, weaponData);
-            actions.push(`Added weapon ${item.name} with ${Object.values(animations).flat().length} frames`);
+            update(
+              `Added weapon ${item.name}`,
+              `Added weapon ${item.name} with ${Object.values(animations).flat().length} frames`
+            );
           } catch (err: any) {
-            actions.push(`Warning: weapon frame processing failed for ${item.name}: ${err.message}`);
-            // Fall back to simple equip (icon only)
+            update("Weapon warning", `Warning: weapon frame processing failed for ${item.name}: ${err.message}`);
             addEquipToCharacterWz(charWz, {
               itemId: item.item_id,
               subCategory: item.sub_category,
@@ -479,7 +525,6 @@ export async function POST() {
             });
           }
         } else {
-          // Non-weapon equip or weapon without frames
           addEquipToCharacterWz(charWz, {
             itemId: item.item_id,
             subCategory: item.sub_category,
@@ -490,11 +535,13 @@ export async function POST() {
           });
         }
       }
+
+      update("Saving patched Character.wz...");
       const charWzOut = join(workDir, "Character-patched.wz");
       saveWzFile(charWz, charWzOut);
-      actions.push("Patched Character.wz with custom items");
+      update("Patched", "Patched Character.wz with custom items");
 
-      // Upload patched Character.wz
+      update("Uploading Character.wz to R2...");
       const charBuf = readFileSync(charWzOut);
       const charUpload = await uploadToR2("Character.wz", charBuf);
       if (charUpload.success) {
@@ -502,12 +549,13 @@ export async function POST() {
           hash: createHash("sha256").update(charBuf).digest("hex"),
           size: charBuf.length,
         };
-        actions.push("Uploaded patched Character.wz to R2");
+        update("Uploaded Character.wz", "Uploaded patched Character.wz to R2");
       } else {
-        actions.push(`Warning: Character.wz upload failed: ${charUpload.error}`);
+        update("Upload warning", `Warning: Character.wz upload failed: ${charUpload.error}`);
       }
 
-      // 9b. Download and patch String.wz (small — 3.5MB)
+      // 9b. Download and patch String.wz
+      update("Downloading String.wz...");
       const strWzPath = join(workDir, "String.wz");
       const strWzUrl = `${R2_PUBLIC_URL}/String.wz`;
       await streamDownload(strWzUrl, strWzPath);
@@ -524,8 +572,9 @@ export async function POST() {
       );
       const strWzOut = join(workDir, "String-patched.wz");
       saveWzFile(strWz, strWzOut);
-      actions.push("Patched String.wz with item names");
+      update("Patched String.wz", "Patched String.wz with item names");
 
+      update("Uploading String.wz to R2...");
       const strBuf = readFileSync(strWzOut);
       const strUpload = await uploadToR2("String.wz", strBuf);
       if (strUpload.success) {
@@ -533,13 +582,14 @@ export async function POST() {
           hash: createHash("sha256").update(strBuf).digest("hex"),
           size: strBuf.length,
         };
-        actions.push("Uploaded patched String.wz to R2");
+        update("Uploaded String.wz", "Uploaded patched String.wz to R2");
       } else {
-        actions.push(`Warning: String.wz upload failed: ${strUpload.error}`);
+        update("Upload warning", `Warning: String.wz upload failed: ${strUpload.error}`);
       }
 
       // 9c. Update launcher manifest
       if (Object.keys(manifestUpdates).length > 0) {
+        update("Updating launcher manifest...");
         try {
           const manifestRes = await fetch(
             `${process.env.COSMIC_DASHBOARD_URL || "http://localhost:3000"}/api/launcher/manifest`
@@ -547,14 +597,13 @@ export async function POST() {
           const manifest = await manifestRes.json();
 
           for (const file of manifest.files || []) {
-            const update = manifestUpdates[file.name];
-            if (update) {
-              file.hash = update.hash;
-              file.size = update.size;
+            const upd = manifestUpdates[file.name];
+            if (upd) {
+              file.hash = upd.hash;
+              file.size = upd.size;
             }
           }
 
-          // Bump patch version
           const parts = (manifest.version || "1.0.0").split(".");
           parts[2] = String(parseInt(parts[2] || "0") + 1);
           manifest.version = parts.join(".");
@@ -568,39 +617,92 @@ export async function POST() {
               body: JSON.stringify({ manifest }),
             }
           );
-          actions.push(`Updated launcher manifest to v${manifest.version}`);
+          update("Manifest updated", `Updated launcher manifest to v${manifest.version}`);
         } catch (err: any) {
-          actions.push(`Warning: manifest update failed: ${err.message}`);
+          update("Manifest warning", `Warning: manifest update failed: ${err.message}`);
         }
       }
     } catch (err: any) {
-      actions.push(`Warning: client WZ patching failed: ${err.message}. Server-side publish still succeeded.`);
+      update(
+        "Client WZ warning",
+        `Warning: client WZ patching failed: ${err.message}. Server-side publish still succeeded.`
+      );
     }
 
-    // 10. Restart game server (entrypoint will download fresh WZ)
+    // 10. Restart game server
+    update("Restarting game server...");
     try {
       const machineId = await restartGameServer();
-      actions.push(`Restarted game server (machine: ${machineId})`);
+      update("Server restarted", `Restarted game server (machine: ${machineId})`);
     } catch (err: any) {
-      actions.push(
+      update(
+        "Restart warning",
         `Warning: server restart failed: ${err.message}. Restart manually.`
       );
     }
 
     // 11. Cleanup
-    rmSync(workDir, { recursive: true, force: true });
-
-    return NextResponse.json({
-      success: true,
-      items_published: items.length,
-      version,
-      actions,
-    });
-  } catch (err: any) {
-    // Cleanup on error
     try {
       rmSync(workDir, { recursive: true, force: true });
     } catch {}
-    return NextResponse.json({ error: err.message, actions }, { status: 500 });
+
+    status.status = "done";
+    status.step = "Complete";
+    status.finishedAt = new Date().toISOString();
+    status.items_published = items.length;
+    status.version = version;
+    writeStatus(status);
+  } catch (err: any) {
+    try {
+      rmSync(workDir, { recursive: true, force: true });
+    } catch {}
+    status.status = "error";
+    status.error = err.message;
+    status.step = "Failed";
+    status.finishedAt = new Date().toISOString();
+    writeStatus(status);
   }
+}
+
+// --- Endpoints ---
+
+// POST: Start a publish job (returns immediately)
+export async function POST() {
+  if (!isR2Configured()) {
+    return NextResponse.json(
+      { error: "R2 credentials not configured" },
+      { status: 500 }
+    );
+  }
+
+  // Check if a job is already running
+  const current = readStatus();
+  if (current?.status === "running") {
+    const elapsed = Date.now() - new Date(current.startedAt).getTime();
+    // Allow restart if stuck for more than 10 minutes
+    if (elapsed < 10 * 60 * 1000) {
+      return NextResponse.json(
+        { error: "A publish job is already running", status: current },
+        { status: 409 }
+      );
+    }
+  }
+
+  const jobId = randomUUID().slice(0, 8);
+
+  // Fire and forget — don't await
+  runPublishJob(jobId).catch((err) => {
+    console.error("Publish job crashed:", err);
+  });
+
+  return NextResponse.json({ started: true, id: jobId });
+}
+
+// GET: Poll publish status
+export async function GET() {
+  const status = readStatus();
+  if (!status) {
+    return NextResponse.json({ status: "idle" });
+  }
+  return NextResponse.json(status);
 }

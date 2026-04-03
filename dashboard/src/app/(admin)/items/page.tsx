@@ -70,6 +70,7 @@ export default function ItemsPage() {
   const [activeFilter, setActiveFilter] = useState("none");
   const [searchTerm, setSearchTerm] = useState("");
   const [publishing, setPublishing] = useState(false);
+  const [publishStep, setPublishStep] = useState("");
   const [publishResult, setPublishResult] = useState<{
     success: boolean;
     message: string;
@@ -98,27 +99,75 @@ export default function ItemsPage() {
 
   useEffect(() => { fetchItems("", "all", "none"); }, [fetchItems]);
 
+  const pollPublishStatus = useCallback(async () => {
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/admin/items/publish");
+        const data = await res.json();
+        if (data.status === "running") {
+          setPublishStep(data.step || "Working...");
+          return true; // keep polling
+        } else if (data.status === "done") {
+          setPublishing(false);
+          setPublishStep("");
+          setPublishResult({
+            success: true,
+            message: `Published ${data.items_published} item(s). Server restarting with new WZ files.\n\n${(data.actions || []).join("\n")}`,
+          });
+          return false;
+        } else if (data.status === "error") {
+          setPublishing(false);
+          setPublishStep("");
+          setPublishResult({
+            success: false,
+            message: data.error || "Publish failed",
+          });
+          return false;
+        }
+        // idle — not running
+        setPublishing(false);
+        setPublishStep("");
+        return false;
+      } catch {
+        // Network error during poll — keep trying
+        return true;
+      }
+    };
+
+    // Poll every 2 seconds
+    const interval = setInterval(async () => {
+      const shouldContinue = await poll();
+      if (!shouldContinue) clearInterval(interval);
+    }, 2000);
+
+    // Initial poll
+    poll();
+
+    return () => clearInterval(interval);
+  }, []);
+
   const handlePublish = useCallback(async () => {
     if (!confirm("Publish all custom items to the game server? This will restart the server.")) return;
     setPublishing(true);
     setPublishResult(null);
+    setPublishStep("Starting publish...");
     try {
       const res = await fetch("/api/admin/items/publish", { method: "POST" });
       const data = await res.json();
-      if (data.success) {
-        setPublishResult({
-          success: true,
-          message: `Published ${data.items_published} item(s). Server restarting with new WZ files.`,
-        });
-      } else {
-        setPublishResult({ success: false, message: data.error || "Publish failed" });
+      if (data.error) {
+        setPublishing(false);
+        setPublishStep("");
+        setPublishResult({ success: false, message: data.error });
+        return;
       }
+      // Job started — poll for status
+      pollPublishStatus();
     } catch {
-      setPublishResult({ success: false, message: "Network error during publish" });
-    } finally {
       setPublishing(false);
+      setPublishStep("");
+      setPublishResult({ success: false, message: "Network error starting publish" });
     }
-  }, []);
+  }, [pollPublishStatus]);
 
   const handleLocalPublish = useCallback(async () => {
     if (!confirm("Local publish: patch client WZ files + server XML from DB items.\nOutput goes to dashboard/test-output/.")) return;
@@ -202,10 +251,21 @@ export default function ItemsPage() {
         </div>
       </div>
 
+      {/* Publish Progress */}
+      {publishing && publishStep && (
+        <div className="rounded-lg border border-accent-blue/30 bg-accent-blue/10 p-4 text-sm text-accent-blue flex items-center gap-3">
+          <svg className="animate-spin h-4 w-4 shrink-0" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          {publishStep}
+        </div>
+      )}
+
       {/* Publish Result */}
       {publishResult && (
         <div
-          className={`rounded-lg border p-4 text-sm ${
+          className={`rounded-lg border p-4 text-sm whitespace-pre-wrap ${
             publishResult.success
               ? "border-accent-green/30 bg-accent-green/10 text-accent-green"
               : "border-accent-red/30 bg-accent-red/10 text-accent-red"
