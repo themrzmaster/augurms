@@ -6370,6 +6370,9 @@ public class Character extends AbstractCharacterObject {
             }
         }
 
+        // Bonus HP per level — eliminates need for HP washing
+        addhp += YamlConfig.config.server.BONUS_HP_PER_LEVEL;
+
         addMaxMPMaxHP(addhp, addmp, true);
 
         if (takeexp) {

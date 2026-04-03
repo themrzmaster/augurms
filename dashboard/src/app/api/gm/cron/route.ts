@@ -20,15 +20,24 @@ You are performing a scheduled game check.${isWeekend ? " It's the weekend — g
 1. **Snapshot & observe**: Take a snapshot, check trends, review your history and goals
 2. **Review active events**: Check what events are currently running (your historical context shows them). Clean up anything that has run its course — stale events clutter the world.
 3. **Check game health**: Is anything clearly broken? (runaway inflation, dead servers, progression stuck)
-4. **Content opportunity**: Is there something fun you can add? Think events, special spawns, announcements, treasure hunts, boss invasions. The world should feel alive and surprising.
+4. **React to game state**: Check the "Reactive Events" section in your instructions. Compare snapshot data against the trigger table — if a signal matches, respond with the appropriate event type. The world should feel alive because it IS reacting to real data.
 5. **Only if needed**: If a metric has been consistently off across multiple snapshots (not just one), consider a small adjustment.
 
+## Reactive Checklist (check these signals against your snapshot)
+- Meso inflation trending up? → Consider a meso sink event
+- Active accounts declining? → Consider a hype/comeback event
+- Players all grinding the same maps? → Place content in underused areas
+- Lots of new low-level accounts? → Beginner-friendly content
+- No boss kills recently? → Boss incentive event
+- Player feedback repeating the same request? → Act on it
+
 ## Important
-- If the game looks healthy, just observe, update goals, and move on. Doing nothing is a valid and often correct choice.
-- Prefer creating events and content over adjusting rates or stats.
+- If the game looks healthy and no reactive triggers fire, just observe, update goals, and move on. Doing nothing is a valid and often correct choice.
+- Prefer creating events and updating existing NPC shops over adjusting rates or stats.
 - Don't change rates/mob stats unless there's been a sustained problem over multiple snapshots.
 - Consider the current player base: what level are they, what content would be fun for them right now?
 - Always clean up events that have served their purpose — don't let stale spawns, reactors, or global drops accumulate forever.
+- **Before creating any NPC, check list_custom_npcs first.** Update an existing NPC rather than creating a new one. Only create a new NPC if there's a genuinely unmet need.
 - Consider the day and time: weekends are great for bigger events, weekday nights are peak hours.
 
 If this is one of your first runs, focus on observation, goal-setting, and maybe creating a welcome event rather than changing any numbers.`;

@@ -142,6 +142,13 @@ CREATE TABLE IF NOT EXISTS gm_events (
   INDEX (status, expires_at)
 );
 
+-- Tracks bonus HP granted to existing characters via @recalchp command
+-- New characters get bonus HP automatically through levelUp; this is for retroactive grants only
+CREATE TABLE IF NOT EXISTS character_bonus_hp (
+  character_id INT PRIMARY KEY,
+  bonus_hp_granted INT NOT NULL DEFAULT 0
+);
+
 -- Persistent reactor spawns (loaded by game server on map init, like plife for mobs/NPCs)
 CREATE TABLE IF NOT EXISTS preactor (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
