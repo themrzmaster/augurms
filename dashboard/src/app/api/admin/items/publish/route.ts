@@ -585,14 +585,14 @@ async function runPublishJob(jobId: string) {
         update("Upload warning", `Warning: String.wz upload failed: ${strUpload.error}`);
       }
 
-      // 9c. Update launcher manifest
+      // 9c. Update launcher manifest (write directly to volume, no self-fetch)
       if (Object.keys(manifestUpdates).length > 0) {
         update("Updating launcher manifest...");
         try {
-          const manifestRes = await fetch(
-            `${process.env.COSMIC_DASHBOARD_URL || "http://localhost:3000"}/api/launcher/manifest`
-          );
-          const manifest = await manifestRes.json();
+          const VOLUME_MANIFEST = join(process.env.COSMIC_ROOT || "/cosmic", "launcher-manifest.json");
+          const BUNDLED_MANIFEST = join(process.cwd(), "launcher-manifest.json");
+          const manifestPath = existsSync(VOLUME_MANIFEST) ? VOLUME_MANIFEST : BUNDLED_MANIFEST;
+          const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
 
           for (const file of manifest.files || []) {
             const upd = manifestUpdates[file.name];
@@ -607,14 +607,7 @@ async function runPublishJob(jobId: string) {
           manifest.version = parts.join(".");
           manifest.updatedAt = new Date().toISOString();
 
-          await fetch(
-            `${process.env.COSMIC_DASHBOARD_URL || "http://localhost:3000"}/api/launcher/manifest`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ manifest }),
-            }
-          );
+          writeFileSync(VOLUME_MANIFEST, JSON.stringify(manifest, null, 2));
           update("Manifest updated", `Updated launcher manifest to v${manifest.version}`);
         } catch (err: any) {
           update("Manifest warning", `Warning: manifest update failed: ${err.message}`);
