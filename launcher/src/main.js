@@ -13,6 +13,19 @@ const STATUS_URL = `${API_BASE}/api/server`;
 let mainWindow;
 let gamePath = "";
 
+// Debug log file — writes to game folder so user can inspect
+let logStream = null;
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}`;
+  console.log(line);
+  try {
+    if (!logStream && gamePath) {
+      logStream = fs.createWriteStream(path.join(gamePath, "launcher.log"), { flags: "a" });
+    }
+    if (logStream) logStream.write(line + "\n");
+  } catch {}
+}
+
 // Default game paths to check
 const DEFAULT_PATHS = [
   "C:\\AugurMS",
@@ -266,12 +279,14 @@ ipcMain.handle("launcher:checkUpdates", async () => {
     if (!manifest || !manifest.files) return { status: "error", error: "Invalid manifest" };
 
     const updates = [];
+    log(`Checking ${manifest.files.length} files (manifest v${manifest.version}), hdMode=${hdMode}`);
     for (const file of manifest.files) {
       // Skip HD files if HD mode is off
       if (file.hd && !hdMode) continue;
 
       const localPath = path.join(gamePath, file.name);
       if (!fs.existsSync(localPath)) {
+        log(`${file.name}: missing`);
         updates.push({ ...file, reason: "missing" });
         continue;
       }
@@ -282,6 +297,7 @@ ipcMain.handle("launcher:checkUpdates", async () => {
       // Check file size first (fast)
       const stats = fs.statSync(localPath);
       if (stats.size !== file.size) {
+        log(`${file.name}: size mismatch (local=${stats.size}, expected=${file.size})`);
         updates.push({ ...file, reason: "size_mismatch" });
         continue;
       }
@@ -290,10 +306,12 @@ ipcMain.handle("launcher:checkUpdates", async () => {
       if (file.hash) {
         const localHash = await hashFile(localPath);
         if (localHash !== file.hash) {
+          log(`${file.name}: hash mismatch (local=${localHash.slice(0,16)}..., expected=${file.hash.slice(0,16)}...)`);
           updates.push({ ...file, reason: "hash_mismatch" });
         }
       }
     }
+    log(`Update check: ${updates.length} files need updating: ${updates.map(u => u.name).join(", ") || "none"}`);
 
     return {
       status: updates.length > 0 ? "updates_available" : "up_to_date",
@@ -341,12 +359,14 @@ ipcMain.handle("launcher:downloadUpdates", async (_, updates) => {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
+        log(`Download ${file.name} attempt ${attempt}/${MAX_RETRIES} from ${file.url}`);
         sendProgress(0, attempt > 1 ? `Retry ${attempt}/${MAX_RETRIES}` : undefined);
 
         await downloadFile(file.url, destPath, file.size, (percent) => sendProgress(percent));
 
         // Verify file size
         const stats = fs.statSync(destPath);
+        log(`${file.name}: downloaded ${stats.size} bytes, expected ${file.size}`);
         if (file.size && stats.size !== file.size) {
           throw new Error(`Size mismatch: got ${stats.size}, expected ${file.size}`);
         }
@@ -355,6 +375,7 @@ ipcMain.handle("launcher:downloadUpdates", async (_, updates) => {
         if (file.hash) {
           sendProgress(100, "Verifying...");
           const localHash = await hashFile(destPath);
+          log(`${file.name}: hash ${localHash === file.hash ? "OK" : "MISMATCH"} (local=${localHash.slice(0,16)}... expected=${file.hash.slice(0,16)}...)`);
           if (localHash !== file.hash) {
             // Hash failed — delete and retry from scratch
             try { fs.unlinkSync(destPath); } catch {}
@@ -362,9 +383,11 @@ ipcMain.handle("launcher:downloadUpdates", async (_, updates) => {
           }
         }
 
+        log(`${file.name}: OK`);
         success = true;
         break;
       } catch (err) {
+        log(`${file.name}: attempt ${attempt} failed: ${err.message}`);
         if (attempt === MAX_RETRIES) {
           let hint = "";
           const msg = err.message || "";
