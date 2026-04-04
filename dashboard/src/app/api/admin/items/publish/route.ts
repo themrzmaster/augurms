@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { uploadToR2, isR2Configured } from "@/lib/r2";
+import { uploadToR2, uploadFileToR2, isR2Configured } from "@/lib/r2";
 import { restartGameServer } from "@/lib/fly-restart";
 import {
   parseWzFile,
@@ -541,13 +541,12 @@ async function runPublishJob(jobId: string) {
       saveWzFile(charWz, charWzOut);
       update("Patched", "Patched Character.wz with custom items");
 
-      update("Uploading Character.wz to R2...");
-      const charBuf = readFileSync(charWzOut);
-      const charUpload = await uploadToR2("Character.wz", charBuf);
+      update("Uploading Character.wz to R2 (streaming)...");
+      const charUpload = await uploadFileToR2("Character.wz", charWzOut);
       if (charUpload.success) {
         manifestUpdates["Character.wz"] = {
-          hash: createHash("sha256").update(charBuf).digest("hex"),
-          size: charBuf.length,
+          hash: charUpload.hash,
+          size: charUpload.size,
         };
         update("Uploaded Character.wz", "Uploaded patched Character.wz to R2");
       } else {
@@ -574,13 +573,12 @@ async function runPublishJob(jobId: string) {
       saveWzFile(strWz, strWzOut);
       update("Patched String.wz", "Patched String.wz with item names");
 
-      update("Uploading String.wz to R2...");
-      const strBuf = readFileSync(strWzOut);
-      const strUpload = await uploadToR2("String.wz", strBuf);
+      update("Uploading String.wz to R2 (streaming)...");
+      const strUpload = await uploadFileToR2("String.wz", strWzOut);
       if (strUpload.success) {
         manifestUpdates["String.wz"] = {
-          hash: createHash("sha256").update(strBuf).digest("hex"),
-          size: strBuf.length,
+          hash: strUpload.hash,
+          size: strUpload.size,
         };
         update("Uploaded String.wz", "Uploaded patched String.wz to R2");
       } else {
