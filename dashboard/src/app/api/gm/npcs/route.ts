@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { existsSync } from "fs";
 import { query, execute } from "@/lib/db";
+import { PATHS } from "@/lib/cosmic";
 import { restartGameServer } from "@/lib/fly-restart";
 
 interface GmNpc {
@@ -27,6 +29,26 @@ const INTERACTIVE_NPC_IDS = new Set([
   9000039, // Agent W
   9201117, // Toh Relicseeker
 ]);
+
+function mapFileExists(mapId: number): boolean {
+  const mapArea = Math.floor(mapId / 100000000);
+  const paddedId = mapId.toString().padStart(9, "0");
+  return existsSync(`${PATHS.mapWz}/Map/Map${mapArea}/${paddedId}.img.xml`);
+}
+
+function validateTeleporterDestinations(config: any): string | null {
+  if (!config.destinations || !Array.isArray(config.destinations)) return null;
+  const invalid: string[] = [];
+  for (const dest of config.destinations) {
+    if (dest.mapId !== undefined && !mapFileExists(dest.mapId)) {
+      invalid.push(`${dest.mapId} (${dest.name || "unnamed"})`);
+    }
+  }
+  if (invalid.length > 0) {
+    return `Invalid map IDs (no WZ data exists): ${invalid.join(", ")}. Use search_maps to find correct map IDs.`;
+  }
+  return null;
+}
 
 function parseConfig(row: GmNpc) {
   return {
@@ -116,6 +138,12 @@ export async function POST(request: NextRequest) {
     // Auto-set currency_name if missing
     if (!configObj.currency_name && configObj.currency === "votepoints") {
       configObj.currency_name = "Vote Points";
+    }
+
+    // Validate teleporter destinations exist
+    if (type === "teleporter") {
+      const err = validateTeleporterDestinations(configObj);
+      if (err) return NextResponse.json({ error: err }, { status: 400 });
     }
 
     const configStr = JSON.stringify(configObj);
@@ -222,6 +250,20 @@ export async function PUT(request: NextRequest) {
       }
       if (!configObj.currency_name && configObj.currency === "votepoints") {
         configObj.currency_name = "Vote Points";
+      }
+      // Validate teleporter destinations — check current type if not being changed
+      const effectiveType = body.type;
+      let isTeleporter = effectiveType === "teleporter";
+      if (!effectiveType && configObj.destinations) {
+        // Config has destinations — look up current NPC type
+        const lookup = name
+          ? await query<GmNpc>("SELECT type FROM gm_npcs WHERE name = ?", [name])
+          : await query<GmNpc>("SELECT type FROM gm_npcs WHERE npc_id = ?", [npcId]);
+        isTeleporter = lookup.length > 0 && lookup[0].type === "teleporter";
+      }
+      if (isTeleporter) {
+        const err = validateTeleporterDestinations(configObj);
+        if (err) return NextResponse.json({ error: err }, { status: 400 });
       }
       sets.push("config = ?");
       params.push(JSON.stringify(configObj));

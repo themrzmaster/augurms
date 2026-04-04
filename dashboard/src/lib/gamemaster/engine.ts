@@ -1021,7 +1021,8 @@ exchange: {"currency":"votepoints","currency_name":"Vote Points","greeting":"Wel
 
 dialogue: {"pages":["Page 1 text","Page 2 text"]}
 
-teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"Henesys","cost":0}]}`,
+teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"Henesys","cost":0}]}
+  - IMPORTANT: Call search_maps to verify every mapId before using it. The API rejects nonexistent map IDs.`,
           },
           mapId: { type: "number", description: "Map ID to spawn the NPC on" },
           x: { type: "number", description: "X position on the map" },
@@ -1036,7 +1037,7 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
     type: "function",
     function: {
       name: "update_custom_npc",
-      description: "Update an existing custom NPC by name. Changes take effect immediately on next player interaction (no restart needed).",
+      description: "Update an existing custom NPC by name. Changes take effect immediately on next player interaction (no restart needed). IMPORTANT for teleporters: You MUST call search_maps to verify every mapId before updating destinations. The API validates map IDs and will reject nonexistent ones.",
       parameters: {
         type: "object",
         properties: {
@@ -1948,6 +1949,7 @@ You can create database-driven NPCs that players can interact with. These are po
 - Each NPC appearance can only be used once. Use \`list_custom_npcs\` to see what's taken.
 - Use \`update_custom_npc\` to change an NPC's shop items, dialogue, or destinations — changes are instant (no restart).
 - Vote point shops are especially valuable — they reward players who vote and give them something to spend points on.
+- **CRITICAL — Teleporter map IDs**: NEVER guess or assume map IDs from memory. You MUST call \`search_maps\` for every destination before setting teleporter configs. The API will reject nonexistent map IDs. Past sessions have broken teleporters by using hallucinated IDs (e.g. setting "Three Doors" to a Cave of Life map, or "New Leaf City" to a nonexistent ID). Always verify.
 
 ### NPC Discipline — Quality Over Quantity
 You have a LIMITED pool of NPC appearances (only 9 total). Treat them as a scarce resource.
