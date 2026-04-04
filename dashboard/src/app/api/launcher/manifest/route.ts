@@ -7,9 +7,12 @@ import crypto from "crypto";
 // Write: always write to volume so updates persist across deploys
 const VOLUME_MANIFEST = "/cosmic/launcher-manifest.json";
 const BUNDLED_MANIFEST = path.join(process.cwd(), "launcher-manifest.json");
-const READ_PATH = fs.existsSync(VOLUME_MANIFEST) ? VOLUME_MANIFEST : BUNDLED_MANIFEST;
 const WRITE_PATH = VOLUME_MANIFEST; // always write to volume
-const MANIFEST_PATH = READ_PATH;
+
+// Check dynamically on every read — the volume file may be created after startup
+function getReadPath() {
+  return fs.existsSync(VOLUME_MANIFEST) ? VOLUME_MANIFEST : BUNDLED_MANIFEST;
+}
 
 // Files the launcher tracks for updates
 const TRACKED_FILES = [
@@ -45,8 +48,8 @@ interface Manifest {
 export async function GET() {
   try {
     // Try to read existing manifest
-    if (fs.existsSync(MANIFEST_PATH)) {
-      const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf-8"));
+    if (fs.existsSync(getReadPath())) {
+      const manifest = JSON.parse(fs.readFileSync(getReadPath(), "utf-8"));
       return NextResponse.json(manifest, {
         headers: { "Access-Control-Allow-Origin": "*" },
       });
@@ -117,10 +120,10 @@ export async function POST(request: Request) {
 
     // Option 3: Update download URLs only (e.g., new Mega links)
     if (body.urls) {
-      if (!fs.existsSync(MANIFEST_PATH)) {
+      if (!fs.existsSync(getReadPath())) {
         return NextResponse.json({ error: "No manifest exists" }, { status: 400 });
       }
-      const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf-8"));
+      const manifest = JSON.parse(fs.readFileSync(getReadPath(), "utf-8"));
       for (const file of manifest.files) {
         if (body.urls[file.name]) {
           file.url = body.urls[file.name];
