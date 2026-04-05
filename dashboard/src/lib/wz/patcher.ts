@@ -845,34 +845,51 @@ function createPlaceholderPng(): Buffer {
 }
 
 /** Max pixel dimension for weapon sprites (real weapons are ≤69px) */
-const MAX_WEAPON_DIM = 70;
+const MAX_WEAPON_DIM = 40;
 
-/** Downscale a PNG buffer if either dimension exceeds MAX_WEAPON_DIM.
- *  Returns { pngBuf, scaleX, scaleY } where scale factors allow adjusting origin/attach. */
-function clampWeaponFrame(pngBuf: Buffer): { pngBuf: Buffer; scale: number } {
+/** Mirror a PNG horizontally and downscale if oversized.
+ *  Weapon renders have tip pointing left; MapleStory needs tip pointing right. */
+function processWeaponFrame(pngBuf: Buffer): { pngBuf: Buffer; scale: number; srcWidth: number } {
   const src = PNG.sync.read(pngBuf);
+  const srcWidth = src.width;
+
+  // Step 1: Mirror horizontally (flip left↔right so tip points right)
+  const mirrored = new PNG({ width: src.width, height: src.height });
+  for (let y = 0; y < src.height; y++) {
+    for (let x = 0; x < src.width; x++) {
+      const si = (y * src.width + (src.width - 1 - x)) * 4;
+      const di = (y * src.width + x) * 4;
+      mirrored.data[di] = src.data[si];
+      mirrored.data[di + 1] = src.data[si + 1];
+      mirrored.data[di + 2] = src.data[si + 2];
+      mirrored.data[di + 3] = src.data[si + 3];
+    }
+  }
+
+  // Step 2: Downscale if oversized
   const maxDim = Math.max(src.width, src.height);
-  if (maxDim <= MAX_WEAPON_DIM) return { pngBuf, scale: 1 };
+  if (maxDim <= MAX_WEAPON_DIM) {
+    return { pngBuf: PNG.sync.write(mirrored), scale: 1, srcWidth };
+  }
 
   const scale = MAX_WEAPON_DIM / maxDim;
   const dw = Math.max(1, Math.round(src.width * scale));
   const dh = Math.max(1, Math.round(src.height * scale));
   const dst = new PNG({ width: dw, height: dh });
 
-  // Nearest-neighbor downscale (pixel art style)
   for (let dy = 0; dy < dh; dy++) {
-    const sy = Math.min(Math.floor(dy / scale), src.height - 1);
+    const sy = Math.min(Math.floor(dy / scale), mirrored.height - 1);
     for (let dx = 0; dx < dw; dx++) {
-      const sx = Math.min(Math.floor(dx / scale), src.width - 1);
-      const si = (sy * src.width + sx) * 4;
+      const sx = Math.min(Math.floor(dx / scale), mirrored.width - 1);
+      const si = (sy * mirrored.width + sx) * 4;
       const di = (dy * dw + dx) * 4;
-      dst.data[di] = src.data[si];
-      dst.data[di + 1] = src.data[si + 1];
-      dst.data[di + 2] = src.data[si + 2];
-      dst.data[di + 3] = src.data[si + 3];
+      dst.data[di] = mirrored.data[si];
+      dst.data[di + 1] = mirrored.data[si + 1];
+      dst.data[di + 2] = mirrored.data[si + 2];
+      dst.data[di + 3] = mirrored.data[si + 3];
     }
   }
-  return { pngBuf: PNG.sync.write(dst), scale };
+  return { pngBuf: PNG.sync.write(dst), scale, srcWidth };
 }
 
 /** Write a Vector2D extended property */
@@ -1167,13 +1184,15 @@ export function buildWeaponImg(weapon: WeaponData, ks: Buffer): Buffer {
 
     for (let i = 0; i < frames.length; i++) {
       const frame = frames[i];
-      // Downscale oversized frames to match real weapon sprite sizes
-      const clamped = clampWeaponFrame(frame.pngBuf);
-      const frameIcon = decodePngToIcon(clamped.pngBuf);
-      const originX = Math.round(frame.originX * clamped.scale);
-      const originY = Math.round(frame.originY * clamped.scale);
-      const attachX = Math.round(frame.attachX * clamped.scale);
-      const attachY = Math.round(frame.attachY * clamped.scale);
+      // Mirror horizontally (tip→right) and downscale oversized frames
+      const processed = processWeaponFrame(frame.pngBuf);
+      const frameIcon = decodePngToIcon(processed.pngBuf);
+      // After horizontal flip, gripX mirrors: new = (srcWidth - 1 - old)
+      const mirroredGripX = processed.srcWidth - 1 - frame.originX;
+      const originX = Math.round(mirroredGripX * processed.scale);
+      const originY = Math.round(frame.originY * processed.scale);
+      const attachX = Math.round(frame.attachX * processed.scale);
+      const attachY = Math.round(frame.attachY * processed.scale);
 
       // Frame sub-property "0", "1", "2", ...
       w.writeStringBlock(String(i), 0x00, 0x01);
