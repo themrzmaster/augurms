@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { query as dbQuery, execute } from "@/lib/db";
+import { restartGameServer } from "@/lib/fly-restart";
 import type { GMSession, GMLogEntry } from "./types";
 
 const BASE = process.env.COSMIC_DASHBOARD_URL || "http://localhost:3000";
@@ -57,6 +58,14 @@ const WRITE_TOOLS = new Set([
   "set_server_message",
   "create_goal", "update_goal",
   "publish_client_update",
+]);
+
+// Tools that write to preactor/plife — require server restart to become visible
+const RESTART_REQUIRED_TOOLS = new Set([
+  "add_map_spawn", "remove_map_spawn",
+  "add_map_reactor", "remove_map_reactor",
+  "create_event", // only when it adds mobs (plife), checked at result time
+  "create_treasure_hunt",
 ]);
 
 // ---- Coordinate validation against map footholds ----
@@ -464,7 +473,6 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
       parameters: { type: "object", properties: { lines: { type: "number", description: "Number of log lines to return (default 100)" } } },
     },
   },
-
   // ── Character Management ──
   {
     type: "function",
@@ -757,7 +765,7 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "add_map_spawn",
-      description: "Add a mob or NPC spawn to a map. Written to plife DB table, takes effect on server restart. IMPORTANT: You MUST provide the correct foothold (fh) value — use get_map to find existing spawns and copy the fh from a nearby spawn at similar x,y coordinates. An fh of 0 makes NPCs non-interactive.",
+      description: "Add a mob or NPC spawn to a map. Written to plife DB table. The server is automatically restarted at the end of your session to make new spawns visible. IMPORTANT: You MUST provide the correct foothold (fh) value — use get_map to find existing spawns and copy the fh from a nearby spawn at similar x,y coordinates. An fh of 0 makes NPCs non-interactive.",
       parameters: {
         type: "object",
         properties: {
@@ -776,7 +784,7 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "remove_map_spawn",
-      description: "Remove a mob or NPC spawn from a map. Removes from plife table. Takes effect on server restart.",
+      description: "Remove a mob or NPC spawn from a map. Removes from plife table. Server auto-restarts at end of session to apply.",
       parameters: {
         type: "object",
         properties: {
@@ -810,7 +818,7 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "add_map_reactor",
-      description: "Place a reactor (breakable object) on a map. Stored in preactor DB table, loaded by server on map init. Use search_reactors to find reactor IDs, and get_map to find valid x,y coordinates. Takes effect on server restart.",
+      description: "Place a reactor (breakable object) on a map. Stored in preactor DB table. Use search_reactors to find reactor IDs, and get_map to find valid x,y coordinates. The server is automatically restarted at the end of your session to make new reactors visible to players.",
       parameters: {
         type: "object",
         properties: {
@@ -1126,7 +1134,7 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
     type: "function",
     function: {
       name: "create_event",
-      description: "Create a dynamic event combining mob spawns, bonus drops, and a server announcement. Mob spawns are added to the plife table (take effect on restart). Drop changes are live. Global drops (bonusDrops without mobId) drop from ALL mobs server-wide. Events are tracked and can auto-expire.",
+      description: "Create a dynamic event combining mob spawns, bonus drops, and a server announcement. Mob spawns are added to the plife table (server auto-restarts at end of session to apply). Drop changes (bonusDrops) are live immediately. Global drops (bonusDrops without mobId) drop from ALL mobs server-wide. Events are tracked and can auto-expire.",
       parameters: {
         type: "object",
         properties: {
@@ -1197,7 +1205,7 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
     type: "function",
     function: {
       name: "create_treasure_hunt",
-      description: "Create a treasure hunt event: place breakable reactor boxes across multiple maps with item rewards. Bundles reactor placement, drop configuration, announcement, and event tracking with auto-expiry. Reactors take effect on server restart.",
+      description: "Create a treasure hunt event: place breakable reactor boxes across multiple maps with item rewards. Bundles reactor placement, drop configuration, announcement, and event tracking with auto-expiry. The server is automatically restarted at the end of your session to make reactors visible to players.",
       parameters: {
         type: "object",
         properties: {
@@ -1672,7 +1680,17 @@ async function buildHistoricalContext(): Promise<string> {
       "SELECT rating, COUNT(*) as cnt FROM player_feedback WHERE created_at > DATE_SUB(NOW(), INTERVAL 7 DAY) GROUP BY rating"
     );
     const unreadFeedback = await dbQuery(
-      "SELECT character_name, character_level, rating, message, created_at FROM player_feedback WHERE read_by_gm = 0 ORDER BY created_at DESC LIMIT 5"
+      "SELECT character_name, character_level, rating, message, created_at FROM player_feedback WHERE read_by_gm = 0 ORDER BY created_at DESC LIMIT 20"
+    );
+    // Aggregate repeated themes — shows what multiple players are asking for
+    const repeatedThemes = await dbQuery(
+      `SELECT LOWER(TRIM(message)) as msg, COUNT(*) as cnt, GROUP_CONCAT(DISTINCT character_name) as players
+       FROM player_feedback
+       WHERE created_at > DATE_SUB(NOW(), INTERVAL 14 DAY)
+       GROUP BY LOWER(TRIM(message))
+       HAVING cnt >= 2
+       ORDER BY cnt DESC
+       LIMIT 10`
     );
     if ((feedbackCounts as any[]).length > 0 || (unreadFeedback as any[]).length > 0) {
       context += "\n\n## Player Feedback (last 7 days)\n";
@@ -1681,8 +1699,14 @@ async function buildHistoricalContext(): Promise<string> {
         for (const row of feedbackCounts as any[]) counts[row.rating] = row.cnt;
         context += `- Positive: ${counts.positive || 0} | Negative: ${counts.negative || 0} | Suggestions: ${counts.suggestion || 0}\n`;
       }
+      if ((repeatedThemes as any[]).length > 0) {
+        context += `\n### Repeated Requests (multiple players asking for the same thing — act on these)\n`;
+        for (const t of repeatedThemes as any[]) {
+          context += `- **"${t.msg}"** — ${t.cnt}x from: ${t.players}\n`;
+        }
+      }
       if ((unreadFeedback as any[]).length > 0) {
-        context += `\n### Unread Feedback\n`;
+        context += `\n### Unread Feedback (${(unreadFeedback as any[]).length} entries)\n`;
         for (const f of unreadFeedback as any[]) {
           context += `- [${f.rating}] **${f.character_name}** (Lv${f.character_level}): "${f.message}" — ${f.created_at}\n`;
         }
@@ -1822,6 +1846,12 @@ All events created with \`create_event\` or \`create_treasure_hunt\` are tracked
 - Use \`cleanup_event({ eventId })\` to precisely remove a tracked event and all its associated content.
 - Events without expiry persist until manually cleaned.
 - Prefer setting expiry on all events to prevent stale content buildup.
+
+## Auto-Restart — Spawns & Reactors Apply Automatically
+When you place reactors (\`add_map_reactor\`, \`create_treasure_hunt\`) or spawn mobs/NPCs (\`add_map_spawn\`, \`create_event\` with mobs), the game server is **automatically restarted at the end of your session** to make them visible to players. You don't need to worry about restarts — just place your content and it will go live when your session ends. The restart takes ~15-20 seconds and briefly disconnects online players.
+- Drop changes (\`add_mob_drop\`, global drops) are live immediately — no restart needed.
+- NPC config changes (\`update_custom_npc\`) are live immediately — no restart needed.
+- Rate changes are live immediately — no restart needed.
 
 ## Reactor Events — Your Secret Weapon
 For fine-grained control (or if you want reactors without a full treasure hunt), you can manage reactors individually:
@@ -1992,6 +2022,16 @@ Your historical context includes item IDs from past events. Players may still ha
 - Prefer creating events and content over adjusting numbers, but don't ignore legitimate progression blockers
 - \`spawn_drop\` is for special moments, not routine — max a few per session
 - Reactor events should feel curated, not spammy — quality over quantity
+
+## Things You Cannot Change (flag to admin)
+Some player requests require Java server code changes that are outside your control. When you see feedback asking for these, acknowledge the request in your summary so the admin knows, but do not attempt to implement them:
+- Chat commands (\`@fm\`, \`@go\`, etc.) — these are hardcoded in Java
+- Inventory slot limits or stack sizes — client/server code limitation
+- Party quest level caps or party EXP range — server code
+- Henesys return scroll behavior — coded in item handler
+- Any client-side visual changes (UI, effects, animations)
+
+When you encounter repeated requests for these, include them in your session summary so the admin can prioritize the code changes.
 
 ## Communication
 - Be direct and concise
@@ -2184,6 +2224,7 @@ export async function runGameMaster(
   ];
 
   let lastTextBeforeToolCall = "";
+  let needsRestart = false;
   const MAX_TURNS = 25;
 
   const model = await getModel();
@@ -2253,6 +2294,17 @@ export async function runGameMaster(
         let parsed: any;
         try { parsed = JSON.parse(resultStr); } catch { parsed = resultStr; }
 
+        // Track if this tool requires a server restart
+        if (RESTART_REQUIRED_TOOLS.has(toolName) && !parsed?.error) {
+          // create_event only needs restart if it added plife entries (mob spawns)
+          if (toolName === "create_event") {
+            const actions = parsed?.actions as string[] | undefined;
+            if (actions?.some((a: string) => a.startsWith("Spawned"))) needsRestart = true;
+          } else {
+            needsRestart = true;
+          }
+        }
+
         // Update the tool_call log entry with the result
         const logEntry = session.log.findLast(
           (e): e is Extract<GMLogEntry, { type: "tool_call" }> =>
@@ -2289,5 +2341,16 @@ export async function runGameMaster(
 
   session.completedAt = new Date().toISOString();
   await persistSessionEnd(session);
+
+  // Auto-restart game server if session placed reactors or spawns
+  if (needsRestart && session.status === "complete") {
+    try {
+      await restartGameServer();
+      addLog({ type: "text", text: "[System] Server restarted automatically to apply reactor/spawn changes." });
+    } catch (err: any) {
+      addLog({ type: "text", text: `[System] Auto-restart failed: ${err.message}` });
+    }
+  }
+
   return session;
 }
