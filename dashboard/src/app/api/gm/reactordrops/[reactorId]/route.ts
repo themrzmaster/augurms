@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execute, query } from "@/lib/db";
+import { findItemName, reactorExists } from "@/lib/item-lookup";
 
 // GET: List drops for a reactor
 export async function GET(
@@ -47,6 +48,23 @@ export async function POST(
       );
     }
 
+    // Validate reactor exists
+    if (!(await reactorExists(reactorId))) {
+      return NextResponse.json(
+        { error: `Reactor ${reactorId} does not exist. Use search_reactors to find valid reactor IDs.` },
+        { status: 400 },
+      );
+    }
+
+    // Validate item exists
+    const itemName = findItemName(itemId);
+    if (!itemName) {
+      return NextResponse.json(
+        { error: `Item ${itemId} does not exist. Use search_items or get_item to find valid item IDs.` },
+        { status: 400 },
+      );
+    }
+
     const result = await execute(
       "INSERT INTO reactordrops (reactorid, itemid, chance, questid) VALUES (?, ?, ?, ?)",
       [reactorId, itemId, chance, questId],
@@ -54,7 +72,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: `Added item ${itemId} to reactor ${reactorId} drops`,
+      message: `Added "${itemName}" (${itemId}) to reactor ${reactorId} drops`,
       insertId: result.insertId,
     });
   } catch (err: any) {

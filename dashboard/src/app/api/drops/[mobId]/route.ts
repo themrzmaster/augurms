@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query, execute } from "@/lib/db";
+import { findItemName } from "@/lib/item-lookup";
 
 export async function GET(
   _request: NextRequest,
@@ -49,6 +50,15 @@ export async function POST(
     if (!body.itemId || body.chance === undefined) {
       return NextResponse.json(
         { error: "Required fields: itemId, chance" },
+        { status: 400 },
+      );
+    }
+
+    // Validate item exists
+    const itemName = findItemName(body.itemId);
+    if (!itemName) {
+      return NextResponse.json(
+        { error: `Item ${body.itemId} does not exist. Use search_items or get_item to find valid item IDs.` },
         { status: 400 },
       );
     }

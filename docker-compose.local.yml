@@ -26,10 +26,11 @@ services:
     environment:
       DB_PASS: testpass
       DB_HOST: db
-      GAME_HOST: 192.168.0.127
+      GAME_HOST: 192.168.0.109
     volumes:
       # Mount local WZ files (includes our custom items)
       - ./server/wz:/opt/server/wz
+      - ./server/scripts:/opt/server/scripts
     depends_on:
       db:
         condition: service_healthy

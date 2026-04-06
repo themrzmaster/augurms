@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readdirSync, readFileSync } from "fs";
 import { PATHS } from "@/lib/cosmic";
+import { query as dbQuery } from "@/lib/db";
 
 interface ReactorInfo {
   id: number;
@@ -64,18 +65,39 @@ function loadReactors(): ReactorInfo[] {
   return reactors;
 }
 
+async function loadCustomReactors(): Promise<ReactorInfo[]> {
+  try {
+    const rows = await dbQuery<any>(
+      "SELECT reactor_id, name, hits_to_break, animation_style FROM custom_reactors"
+    );
+    return rows.map((r: any) => ({
+      id: r.reactor_id,
+      name: `[Custom] ${r.name}`,
+      states: (r.hits_to_break ?? 3) + 1,
+      hasScript: true,
+      visible: true,
+      spriteWidth: 64,
+      spriteHeight: 64,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
-  const query = searchParams.get("q")?.toLowerCase() || "";
+  const q = searchParams.get("q")?.toLowerCase() || "";
 
-  const all = loadReactors();
+  const vanilla = loadReactors();
+  const custom = await loadCustomReactors();
+  const all = [...vanilla, ...custom];
 
   let results = all;
-  if (query) {
+  if (q) {
     results = all.filter(
       (r) =>
-        r.id.toString().includes(query) ||
-        r.name.toLowerCase().includes(query),
+        r.id.toString().includes(q) ||
+        r.name.toLowerCase().includes(q),
     );
   }
 

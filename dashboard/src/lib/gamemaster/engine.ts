@@ -49,7 +49,7 @@ const WRITE_TOOLS = new Set([
   "add_mob_drop", "remove_mob_drop", "batch_update_drops",
   "add_map_spawn", "remove_map_spawn",
   "add_map_reactor", "remove_map_reactor",
-  "add_reactor_drop", "remove_reactor_drop",
+  "add_reactor_drop", "remove_reactor_drop", "create_custom_reactor",
   "spawn_drop",
   "add_shop_item", "update_shop_price", "remove_shop_item",
   "create_custom_npc", "update_custom_npc", "delete_custom_npc",
@@ -63,7 +63,7 @@ const WRITE_TOOLS = new Set([
 // Tools that write to preactor/plife — require server restart to become visible
 const RESTART_REQUIRED_TOOLS = new Set([
   "add_map_spawn", "remove_map_spawn",
-  "add_map_reactor", "remove_map_reactor",
+  "add_map_reactor", "remove_map_reactor", "create_custom_reactor",
   "create_event", // only when it adds mobs (plife), checked at result time
   "create_treasure_hunt",
 ]);
@@ -197,6 +197,9 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
 
   remove_reactor_drop: async ({ reactorId, itemId }) =>
     JSON.stringify(await api(`/api/gm/reactordrops/${reactorId}`, { method: "DELETE", body: JSON.stringify({ itemId }) })),
+
+  create_custom_reactor: async ({ name, description, animationStyle, hitsToBreak, scriptTemplate, drops }) =>
+    JSON.stringify(await api("/api/gm/reactors", { method: "POST", body: JSON.stringify({ name, description, animationStyle, hitsToBreak, scriptTemplate, drops }) })),
 
   spawn_drop: async ({ itemId, quantity, characterName, characterId, mapId, x, y }) =>
     JSON.stringify(await api("/api/gm/drop", { method: "POST", body: JSON.stringify({ itemId, quantity, characterName, characterId, mapId, x, y }) })),
@@ -890,6 +893,37 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
     },
   },
 
+  {
+    type: "function",
+    function: {
+      name: "create_custom_reactor",
+      description: "Create a brand new custom reactor with an AI-generated pixel-art sprite. Provide a name and visual description, and the system generates a MapleStory-style sprite, builds animation frames, writes server XML/scripts, and saves to DB. The reactor can then be placed on maps with add_map_reactor and configured with drops via add_reactor_drop. Server restart required (auto-restarts at session end). Use search_reactors first to check if a vanilla reactor fits before creating a new one.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Reactor display name (e.g. 'Enchanted Mushroom Box', 'Crystal Geode')" },
+          description: { type: "string", description: "Visual description for AI sprite generation. Be specific about the object (e.g. 'a glowing blue crystal formation growing from rock', 'a wooden treasure chest wrapped in vines')" },
+          animationStyle: { type: "string", enum: ["breakable", "collectible", "pulsing"], description: "breakable=splits apart, collectible=shrinks+sparkles, pulsing=expands+fades. Default: breakable" },
+          hitsToBreak: { type: "number", description: "Hits to break (1-5, default 3)" },
+          scriptTemplate: { type: "string", enum: ["drop_items", "drop_items_meso", "spawn_monster"], description: "drop_items=drops from reactordrops table, drop_items_meso=drops items+meso, spawn_monster=spawns mob. Default: drop_items" },
+          drops: {
+            type: "array",
+            description: "Optional item drops to configure immediately",
+            items: {
+              type: "object",
+              properties: {
+                itemId: { type: "number", description: "Item ID to drop" },
+                chance: { type: "number", description: "Drop chance 1-100% (default 100)" },
+              },
+              required: ["itemId"],
+            },
+          },
+        },
+        required: ["name", "description"],
+      },
+    },
+  },
+
   // ── Live Drops ──
   {
     type: "function",
@@ -1424,6 +1458,31 @@ async function buildHistoricalContext(): Promise<string> {
     }
   } catch { /* gm_npcs table may not exist */ }
 
+  // Custom Reactors — the GM's own creations (from custom_reactors table)
+  try {
+    const customReactorDefs = await dbQuery(
+      `SELECT cr.reactor_id, cr.name, cr.hits_to_break, cr.animation_style, cr.script_template, cr.published,
+              GROUP_CONCAT(CONCAT(rd.itemid, ':', rd.chance) SEPARATOR ',') as drops
+       FROM custom_reactors cr
+       LEFT JOIN reactordrops rd ON rd.reactorid = cr.reactor_id
+       GROUP BY cr.reactor_id ORDER BY cr.reactor_id`
+    );
+    if ((customReactorDefs as any[]).length > 0) {
+      context += "\n\n## Your Custom Reactors\n";
+      context += "These are reactors you created with `create_custom_reactor`. Use their IDs with `add_map_reactor` to place them, or `add_reactor_drop`/`remove_reactor_drop` to change drops.\n";
+      for (const r of customReactorDefs as any[]) {
+        const published = r.published ? "published" : "unpublished";
+        const drops = r.drops
+          ? r.drops.split(",").map((d: string) => { const [id, ch] = d.split(":"); return `item ${id} (chance ${ch})`; }).join(", ")
+          : "no drops";
+        context += `\n- **${r.name}** (ID: ${r.reactor_id}, ${published}) — ${r.animation_style}, ${r.hits_to_break} hits, ${r.script_template}\n`;
+        context += `  Drops: ${drops}\n`;
+      }
+    } else {
+      context += "\n\n## Your Custom Reactors\nNone created yet. Use `create_custom_reactor` to generate one with AI pixel art.\n";
+    }
+  } catch { /* custom_reactors table may not exist */ }
+
   // Active events — what's currently running in the game
   try {
     const customSpawns = await dbQuery(
@@ -1855,11 +1914,12 @@ When you place reactors (\`add_map_reactor\`, \`create_treasure_hunt\`) or spawn
 
 ## Reactor Events — Your Secret Weapon
 For fine-grained control (or if you want reactors without a full treasure hunt), you can manage reactors individually:
-- Search for reactor templates with \`search_reactors\` (eggs, boxes, plants, crystals, chests — 421 options)
+- Search existing reactor templates with \`search_reactors\` (421 vanilla + any custom-created ones, marked [Custom])
+- **Create brand new reactors** with \`create_custom_reactor\` — describe what you want and an AI generates a unique pixel-art sprite. Animations, server files, drops are all auto-generated. The full publish pipeline runs automatically (client WZ → R2 → manifest bump → server restart).
 - Place them on maps with \`add_map_reactor\`
 - Configure their drops with \`add_reactor_drop\`
 - Players discover them, break them, get loot — pure dopamine
-- Use for: treasure hunts, Easter eggs, hidden rewards, map exploration incentives
+- Use for: treasure hunts, Easter eggs, hidden rewards, map exploration incentives, seasonal events with unique visuals
 
 ### CRITICAL — Reactor IDs vs Item IDs
 **Reactor IDs and Item IDs are COMPLETELY DIFFERENT systems.** Do NOT confuse them:
@@ -1882,7 +1942,9 @@ For fine-grained control (or if you want reactors without a full treasure hunt),
 3. \`add_reactor_drop\` — configure what items come out when players break it
 Players physically hit the reactor object on the map and it drops items. This is the mystery box mechanic.
 
-**Finding reactors**: Use \`search_reactors\` and ONLY pick reactors where \`visible=true\`. Many reactors have a 1x1 pixel sprite and are invisible to players. If using \`create_treasure_hunt\`, you can omit the reactorId and a visible reactor will be auto-selected.
+**Finding reactors**: Use \`search_reactors\` and ONLY pick reactors where \`visible=true\`. Many vanilla reactors have a 1x1 pixel sprite and are invisible to players. Custom reactors (marked [Custom]) are always visible. If using \`create_treasure_hunt\`, you can omit the reactorId and a visible reactor will be auto-selected.
+
+**Creating unique reactors**: If none of the vanilla reactors fit your vision, use \`create_custom_reactor\` to generate one. Give it a descriptive name and a detailed visual description (e.g. "a glowing enchanted mushroom with purple spots" or "a frozen treasure chest covered in ice crystals"). The system generates a pixel-art sprite via AI, builds all animation frames, writes server files, uploads to R2, bumps the client manifest, and restarts the server — all automatically. The reactor is fully usable within ~2 minutes.
 
 ### Item Distribution Best Practices
 - **ALWAYS call \`get_item\` to verify an item's name, description, and category before adding it to drops, shops, or events.** Never assume an item ID is correct from name alone — past sessions have added wrong items (e.g. a peach instead of Swiss Cheese, wrong 2x drop card).
