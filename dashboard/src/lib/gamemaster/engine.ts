@@ -802,7 +802,7 @@ const toolSchemas: OpenAI.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "search_reactors",
-      description: "Search available reactor templates (breakable objects, boxes, eggs, plants, crystals). Returns: id, name, state count, whether a script exists. There are 421 reactor visuals in the game — use existing ones to place on maps.",
+      description: "Search available reactor templates (breakable objects, boxes, eggs, plants, crystals). Returns: id, name, state count, whether a script exists, and visibility info (visible=true means state 0 sprite is large enough to see in-game). IMPORTANT: Only use reactors with visible=true — invisible reactors have a 1x1 pixel sprite and players cannot see or interact with them. Prefer reactors that also have hasScript=true.",
       parameters: { type: "object", properties: { query: { type: "string", description: "Reactor name or ID to search" } } },
     },
   },
@@ -1205,7 +1205,7 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
     type: "function",
     function: {
       name: "create_treasure_hunt",
-      description: "Create a treasure hunt event: place breakable reactor boxes across multiple maps with item rewards. Bundles reactor placement, drop configuration, announcement, and event tracking with auto-expiry. The server is automatically restarted at the end of your session to make reactors visible to players.",
+      description: "Create a treasure hunt event: place breakable reactor boxes across multiple maps with item rewards. Bundles reactor placement, drop configuration, announcement, and event tracking with auto-expiry. The server is automatically restarted at the end of your session to make reactors visible to players. If you omit reactorId, a visible reactor is auto-selected. If you omit x/y coordinates for a location, valid coordinates are auto-picked from existing map spawns. You can just provide mapId and count per location.",
       parameters: {
         type: "object",
         properties: {
@@ -1882,10 +1882,10 @@ For fine-grained control (or if you want reactors without a full treasure hunt),
 3. \`add_reactor_drop\` — configure what items come out when players break it
 Players physically hit the reactor object on the map and it drops items. This is the mystery box mechanic.
 
-**Good reactor IDs for mystery boxes** (search for more with \`search_reactors\`):
-- Search for "box", "chest", "gift", "present", "egg", "crystal" to find options
+**Finding reactors**: Use \`search_reactors\` and ONLY pick reactors where \`visible=true\`. Many reactors have a 1x1 pixel sprite and are invisible to players. If using \`create_treasure_hunt\`, you can omit the reactorId and a visible reactor will be auto-selected.
 
 ### Item Distribution Best Practices
+- **ALWAYS call \`get_item\` to verify an item's name, description, and category before adding it to drops, shops, or events.** Never assume an item ID is correct from name alone — past sessions have added wrong items (e.g. a peach instead of Swiss Cheese, wrong 2x drop card).
 - When distributing items via global drops, always verify the item with \`get_item\` first — check its name, description, and category
 - If the category is "etc", the item CANNOT be used or interacted with — only trade/collect
 - For consumable rewards, use category "consume" items (potions, scrolls, elixirs)

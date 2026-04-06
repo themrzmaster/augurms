@@ -1,5 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execute, query } from "@/lib/db";
+import { readdirSync, readFileSync } from "fs";
+import { PATHS } from "@/lib/cosmic";
+
+// Pick a random visible reactor ID from WZ files
+function pickVisibleReactor(): number {
+  const FALLBACK = 1302000; // Ereve chest — known visible
+  try {
+    const files = readdirSync(PATHS.reactorWz).filter((f) => f.endsWith(".img.xml"));
+    const visible: number[] = [];
+    for (const file of files) {
+      const id = parseInt(file.replace(".img.xml", ""));
+      if (isNaN(id)) continue;
+      try {
+        const content = readFileSync(`${PATHS.reactorWz}/${file}`, "utf-8");
+        const state0 = content.match(/<imgdir name="0">([\s\S]*?)<\/imgdir>/);
+        if (!state0) continue;
+        const canvas = state0[1].match(/<canvas name="0" width="(\d+)" height="(\d+)"/);
+        if (!canvas) continue;
+        const w = parseInt(canvas[1]), h = parseInt(canvas[2]);
+        // Must have a script to drop items, and be visibly sized
+        if (w > 20 && h > 20) {
+          try {
+            readFileSync(`${PATHS.scripts}/reactor/${id}.js`, "utf-8");
+            visible.push(id);
+          } catch {} // no script = skip
+        }
+      } catch {}
+    }
+    if (visible.length === 0) return FALLBACK;
+    return visible[Math.floor(Math.random() * visible.length)];
+  } catch {
+    return FALLBACK;
+  }
+}
+
+// Auto-pick spawn coordinates from existing map life data
+async function pickMapCoordinates(mapId: number): Promise<{ x: number; y: number }> {
+  try {
+    const res = await fetch(`${process.env.COSMIC_DASHBOARD_URL || "http://localhost:3000"}/api/maps/${mapId}`);
+    const data = await res.json();
+    const life = data?.life;
+    if (Array.isArray(life) && life.length > 0) {
+      // Pick a random existing spawn point — guaranteed walkable
+      const spawn = life[Math.floor(Math.random() * life.length)];
+      return { x: spawn.x ?? 0, y: spawn.y ?? 0 };
+    }
+    // Fallback: try portals
+    const portals = data?.portals;
+    if (Array.isArray(portals) && portals.length > 0) {
+      const portal = portals[Math.floor(Math.random() * portals.length)];
+      return { x: portal.x ?? 0, y: portal.y ?? 0 };
+    }
+  } catch {}
+  return { x: 0, y: 0 };
+}
 
 // POST: Create a treasure hunt — place reactors across maps with item drops
 export async function POST(request: NextRequest) {
@@ -16,8 +71,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "At least one drop item is required" }, { status: 400 });
     }
 
-    // Default reactor: use provided reactorId or 2002000 (a common box reactor)
-    const rid = reactorId || 2002000;
+    // Pick a visible reactor: use provided reactorId, or auto-select one that renders in client
+    const rid = reactorId || pickVisibleReactor();
 
     const actions: string[] = [];
     const reactorIds: number[] = [];
@@ -26,20 +81,22 @@ export async function POST(request: NextRequest) {
     // 1. Place reactors on each map
     for (const loc of locations) {
       const mapId = loc.mapId ?? loc.map;
-      const x = loc.x ?? 0;
-      const y = loc.y ?? 0;
+      if (!mapId) continue;
+
+      // Auto-pick coordinates if not provided
+      const hasCoords = loc.x !== undefined && loc.y !== undefined;
+      const { x: baseX, y: baseY } = hasCoords ? { x: loc.x, y: loc.y } : await pickMapCoordinates(mapId);
       const count = Math.min(loc.count ?? 1, 10);
       const reactorTime = loc.reactorTime ?? loc.respawnTime ?? -1; // -1 = no respawn (one-time break)
-      if (!mapId) continue;
 
       for (let i = 0; i < count; i++) {
         const result = await execute(
           "INSERT INTO preactor (world, map, rid, x, y, f, reactor_time, name) VALUES (0, ?, ?, ?, ?, 0, ?, ?)",
-          [mapId, rid, x + (i * 40), y, reactorTime, `TH: ${name}`]
+          [mapId, rid, baseX + (i * 40), baseY, reactorTime, `TH: ${name}`]
         );
         if (result.insertId) reactorIds.push(result.insertId);
       }
-      actions.push(`Placed ${count}x reactor ${rid} on map ${mapId} at (${x}, ${y})`);
+      actions.push(`Placed ${count}x reactor ${rid} on map ${mapId} at (${baseX}, ${baseY})`);
     }
 
     // 2. Configure drops for the reactor

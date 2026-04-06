@@ -7,6 +7,9 @@ interface ReactorInfo {
   name: string;
   states: number;
   hasScript: boolean;
+  visible: boolean;
+  spriteWidth: number;
+  spriteHeight: number;
 }
 
 // Cache reactor list (parsed once from WZ)
@@ -33,6 +36,18 @@ function loadReactors(): ReactorInfo[] {
         const stateMatches = content.match(/<imgdir name="\d+">/g);
         const states = stateMatches ? stateMatches.length : 0;
 
+        // Check state 0 sprite dimensions to determine visibility
+        let spriteWidth = 0, spriteHeight = 0;
+        const state0Match = content.match(/<imgdir name="0">([\s\S]*?)<\/imgdir>/);
+        if (state0Match) {
+          const canvasMatch = state0Match[1].match(/<canvas name="0" width="(\d+)" height="(\d+)"/);
+          if (canvasMatch) {
+            spriteWidth = parseInt(canvasMatch[1]);
+            spriteHeight = parseInt(canvasMatch[2]);
+          }
+        }
+        const visible = spriteWidth > 10 && spriteHeight > 10;
+
         // Check for script
         let hasScript = false;
         try {
@@ -40,7 +55,7 @@ function loadReactors(): ReactorInfo[] {
           hasScript = true;
         } catch {}
 
-        reactors.push({ id, name, states, hasScript });
+        reactors.push({ id, name, states, hasScript, visible, spriteWidth, spriteHeight });
       } catch {}
     }
   } catch {}
