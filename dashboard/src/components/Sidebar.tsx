@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: "/cheats", label: "Cheat Flags", icon: "🚩" },
   { href: "/worldmap", label: "World Map", icon: "🌏" },
   { href: "/gamemaster", label: "Game Master", icon: "🧠" },
+  { href: "/augur", label: "Augur NPC", icon: "🔮" },
   { href: "/tracking", label: "Click Tracking", icon: "📊" },
 ];
 

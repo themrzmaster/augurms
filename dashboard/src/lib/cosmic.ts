@@ -13,6 +13,7 @@ export const PATHS = {
   itemWz: resolve(COSMIC_ROOT, "wz/Item.wz"),
   characterWz: resolve(COSMIC_ROOT, "wz/Character.wz"),
   reactorWz: resolve(COSMIC_ROOT, "wz/Reactor.wz"),
+  npcWz: resolve(COSMIC_ROOT, "wz/Npc.wz"),
 } as const;
 
 /** Sprite URLs from maplestory.io (GMS v83 community API) */

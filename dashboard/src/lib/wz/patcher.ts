@@ -1960,3 +1960,58 @@ export function addStringsToStringWz(
   eqpEntry.data = newImgData;
   eqpEntry.originalOffset = undefined; // use data instead of copying from original
 }
+
+/** Add an NPC name entry to Npc.img in a parsed String.wz */
+export function addNpcToStringWz(
+  wzInfo: WzFileInfo,
+  npcId: number,
+  name: string,
+  dialogue?: string,
+): void {
+  const npcEntry = wzInfo.root.find(
+    (e) => e.type === "img" && e.name === "Npc.img"
+  );
+  if (!npcEntry)
+    throw new Error("Npc.img not found in String.wz");
+
+  const origFd = openSync(wzInfo.filePath, "r");
+  let imgData: Buffer;
+  try {
+    imgData = Buffer.alloc(npcEntry.blockSize);
+    readSync(origFd, imgData, 0, npcEntry.blockSize, npcEntry.originalOffset!);
+  } finally {
+    closeSync(origFd);
+  }
+
+  // Parse the property tree
+  const reader = new ImgReader(imgData, wzInfo.keyStream);
+  const tree = reader.parseRoot();
+
+  // Npc.img is flat: root children keyed by NPC ID string
+  const npcIdStr = String(npcId);
+  const existing = tree.children?.find((c) => c.name === npcIdStr);
+  if (!existing) {
+    const children: PropNode[] = [
+      { name: "name", type: "string", value: name },
+    ];
+    if (dialogue) {
+      children.push({ name: "n0", type: "string", value: dialogue });
+    }
+    tree.children!.push({
+      name: npcIdStr,
+      type: "sub",
+      children,
+    });
+  }
+
+  // Re-serialize
+  const writer = new ImgWriter(wzInfo.keyStream);
+  writePropertyTree(writer, tree);
+  const newImgData = writer.toBuffer();
+  const checksum = computeChecksum(newImgData);
+
+  npcEntry.blockSize = newImgData.length;
+  npcEntry.checksum = checksum;
+  npcEntry.data = newImgData;
+  npcEntry.originalOffset = undefined;
+}
