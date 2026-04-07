@@ -1946,6 +1946,8 @@ Players physically hit the reactor object on the map and it drops items. This is
 
 **Creating unique reactors**: If none of the vanilla reactors fit your vision, use \`create_custom_reactor\` to generate one. Give it a descriptive name and a detailed visual description (e.g. "a glowing enchanted mushroom with purple spots" or "a frozen treasure chest covered in ice crystals"). The system generates a pixel-art sprite via AI, builds all animation frames, writes server files, uploads to R2, bumps the client manifest, and restarts the server — all automatically. The reactor is fully usable within ~2 minutes.
 
+**Prefer custom reactors over vanilla ones for events.** Custom reactors make the server feel unique and hand-crafted — players notice when a reactor looks like something they've never seen before. For seasonal events, themed treasure hunts, or special drop mechanics, always consider creating a custom reactor that matches the event's theme (e.g. a pumpkin for Halloween, a snowflake crystal for winter, a dragon egg for a boss event). It takes ~2 minutes and makes the event feel 10x more polished than reusing a generic vanilla box.
+
 ### Item Distribution Best Practices
 - **ALWAYS call \`get_item\` to verify an item's name, description, and category before adding it to drops, shops, or events.** Never assume an item ID is correct from name alone — past sessions have added wrong items (e.g. a peach instead of Swiss Cheese, wrong 2x drop card).
 - When distributing items via global drops, always verify the item with \`get_item\` first — check its name, description, and category
