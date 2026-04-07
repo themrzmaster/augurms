@@ -134,8 +134,8 @@ export async function POST(request: NextRequest) {
     // 3. Get next free ID
     const reactorId = await getNextReactorId();
 
-    // 4. Save idle PNG locally for future WZ builds
-    const outputDir = join(process.cwd(), "..", "dashboard", "test-output");
+    // 4. Save idle PNG for debugging
+    const outputDir = join("/tmp", "reactor-sprites");
     mkdirSync(outputDir, { recursive: true });
     writeFileSync(join(outputDir, `reactor-${reactorId}-idle.png`), pngBuf);
 

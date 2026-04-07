@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     const frames = generateReactorFrames(idlePngBuf, animationStyle);
 
     // Save idle PNG locally for publish-local
-    const outputDir = join(process.cwd(), "..", "dashboard", "test-output");
+    const outputDir = join("/tmp", "reactor-sprites");
     mkdirSync(outputDir, { recursive: true });
     writeFileSync(join(outputDir, `reactor-${reactorId}-idle.png`), idlePngBuf);
 

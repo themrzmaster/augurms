@@ -95,80 +95,75 @@ export async function POST() {
       const localIconPath = join(framesBaseDir, "weapon-frames", "icon.png");
 
       if (item.sub_category === "Weapon" && item.stats._weaponFrames) {
-        // Weapon with rendered frames — load from local files
-        const framesDir = join(framesBaseDir, "weapon-frames");
-        if (existsSync(framesDir) && existsSync(join(framesDir, "origins.json"))) {
-          const origins = JSON.parse(readFileSync(join(framesDir, "origins.json"), "utf-8"));
+        const wfData = item.stats._weaponFrames as {
+          origins: Record<string, Array<{ gripX?: number; gripY?: number; x?: number; y?: number }>>;
+          frames: Record<string, string[]>;
+        };
 
-          if (existsSync(join(framesDir, "icon.png"))) {
-            iconPng = readFileSync(join(framesDir, "icon.png"));
-          }
+        // Load frames from DB data (base64 data URLs from Three.js renderer)
+        const animations: Record<string, WeaponFrame[]> = {};
+        for (const [animName, frameUrls] of Object.entries(wfData.frames || {})) {
+          const originList = wfData.origins?.[animName] || [];
+          animations[animName] = [];
 
-          // Load animation frames from local files
-          const animations: Record<string, WeaponFrame[]> = {};
-          const animDirs = readdirSync(framesDir, { withFileTypes: true })
-            .filter((d) => d.isDirectory() && !d.name.startsWith("_"))
-            .map((d) => d.name);
-
-          for (const animName of animDirs) {
-            const animDir = join(framesDir, animName);
-            const pngFiles = readdirSync(animDir)
-              .filter((f) => f.endsWith(".png"))
-              .sort((a, b) => parseInt(a) - parseInt(b));
-
-            const originList = origins[animName] || [];
-            animations[animName] = [];
-
-            for (let i = 0; i < pngFiles.length; i++) {
-              const pngBuf = readFileSync(join(animDir, pngFiles[i]));
-              const orig = originList[i] || { gripX: 0, gripY: 0 };
-              // Use grip point from Blender render as origin
-              const gripX = orig.gripX ?? orig.x ?? 0;
-              const gripY = orig.gripY ?? orig.y ?? 0;
-
-              const isAttack = animName.startsWith("swing") || animName.startsWith("stab") || animName.startsWith("shoot") || animName === "proneStab";
-              animations[animName].push({
-                pngBuf,
-                originX: gripX,
-                originY: gripY,
-                attachX: 0,
-                attachY: 0,
-                attachType: isAttack ? "navel" : "hand",
-                z: isAttack ? "weaponBelowBody" : "weapon",
-              });
+          for (let i = 0; i < frameUrls.length; i++) {
+            const url = frameUrls[i];
+            let pngBuf: Buffer;
+            if (url.startsWith("data:")) {
+              // Base64 data URL — decode directly
+              const base64 = url.split(",")[1];
+              pngBuf = Buffer.from(base64, "base64");
+            } else {
+              // File URL — try to download
+              try {
+                const res = await fetch(url);
+                if (!res.ok) continue;
+                pngBuf = Buffer.from(await res.arrayBuffer());
+              } catch { continue; }
             }
+
+            const orig = originList[i] || { gripX: 0, gripY: 0 };
+            const gripX = orig.gripX ?? orig.x ?? 0;
+            const gripY = orig.gripY ?? orig.y ?? 0;
+            const isAttack = animName.startsWith("swing") || animName.startsWith("stab") || animName.startsWith("shoot") || animName === "proneStab";
+
+            animations[animName].push({
+              pngBuf,
+              originX: gripX,
+              originY: gripY,
+              attachX: 0,
+              attachY: 0,
+              attachType: isAttack ? "navel" : "hand",
+              z: isAttack ? "weaponBelowBody" : "weapon",
+            });
           }
-
-          const wt = item.stats._weaponType || "staff";
-          const wtMeta = WEAPON_TYPES[wt] || WEAPON_TYPES.staff;
-
-          const weaponData: WeaponData = {
-            itemId: item.item_id,
-            weaponType: wt,
-            attackSpeed: item.stats._attackSpeed || 6,
-            afterImage: wtMeta.afterImage,
-            sfx: wtMeta.sfx,
-            stats: item.stats,
-            requirements: item.requirements,
-            flags: item.flags,
-            iconPng,
-            animations,
-          };
-
-          addWeaponToCharacterWz(charWz, weaponData);
-          const frameCount = Object.values(animations).flat().length;
-          actions.push(`+ Weapon: ${item.name} (${item.item_id}) with ${frameCount} frames`);
-        } else {
-          // No local frames — fall back to icon-only
-          addEquipToCharacterWz(charWz, {
-            itemId: item.item_id,
-            subCategory: item.sub_category,
-            stats: item.stats,
-            requirements: item.requirements,
-            flags: item.flags,
-          });
-          actions.push(`+ Weapon: ${item.name} (${item.item_id}) — icon only (no frames in tools/weapon-frames/)`);
         }
+
+        // Load icon from DB icon_url
+        if (item.icon_url?.startsWith("data:")) {
+          const base64 = item.icon_url.split(",")[1];
+          iconPng = Buffer.from(base64, "base64");
+        }
+
+        const wt = item.stats._weaponType || "staff";
+        const wtMeta = WEAPON_TYPES[wt] || WEAPON_TYPES.staff;
+
+        const weaponData: WeaponData = {
+          itemId: item.item_id,
+          weaponType: wt,
+          attackSpeed: item.stats._attackSpeed || 6,
+          afterImage: wtMeta.afterImage,
+          sfx: wtMeta.sfx,
+          stats: item.stats,
+          requirements: item.requirements,
+          flags: item.flags,
+          iconPng,
+          animations,
+        };
+
+        addWeaponToCharacterWz(charWz, weaponData);
+        const frameCount = Object.values(animations).flat().length;
+        actions.push(`+ Weapon: ${item.name} (${item.item_id}) with ${frameCount} frames`);
       } else {
         // Non-weapon equip
         addEquipToCharacterWz(charWz, {

@@ -214,7 +214,7 @@ async function runPublishJob() {
         for (const row of rows) {
           let idlePng: Buffer | undefined;
           // Try local file first, then R2
-          const localPng = join(process.cwd(), "..", "dashboard", "test-output", `reactor-${row.reactor_id}-idle.png`);
+          const localPng = join("/tmp", "reactor-sprites", `reactor-${row.reactor_id}-idle.png`);
           if (existsSync(localPng)) {
             idlePng = readFileSync(localPng);
           } else if (row.idle_png_url) {

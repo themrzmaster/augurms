@@ -22,7 +22,7 @@ const ANIMATIONS: Record<string, { angle: number }[]> = {
 };
 
 const RENDER_SIZE = 512;
-const SPRITE_MAX_DIM = 50;
+const SPRITE_MAX_DIM = 34;
 const ICON_HEIGHT = 28;
 const OUTLINE_COLOR = [30, 30, 30, 255] as const;
 

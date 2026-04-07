@@ -108,7 +108,7 @@ export async function PUT(
     const scriptsRoot = getScriptsRoot();
 
     // Server XML — need idle PNG for dimensions
-    const outputDir = join(process.cwd(), "..", "dashboard", "test-output");
+    const outputDir = join("/tmp", "reactor-sprites");
     const localPngPath = join(outputDir, `reactor-${reactorId}-idle.png`);
     if (existsSync(localPngPath)) {
       const idlePngBuf = readFileSync(localPngPath);
