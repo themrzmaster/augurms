@@ -160,7 +160,7 @@ function getServerRoot(): string {
   if (process.env.WZ_ROOT) return process.env.WZ_ROOT;
   const localServer = join(process.cwd(), "..", "server");
   if (existsSync(join(localServer, "wz"))) return join(localServer, "wz");
-  return "/app/wz";
+  return "/cosmic/wz";
 }
 
 function getScriptsRoot(): string {
@@ -171,5 +171,5 @@ function getScriptsRoot(): string {
   const localServer = join(process.cwd(), "..", "server");
   if (existsSync(join(localServer, "scripts")))
     return join(localServer, "scripts");
-  return "/app/scripts";
+  return "/cosmic/scripts";
 }

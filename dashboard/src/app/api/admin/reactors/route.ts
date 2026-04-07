@@ -8,20 +8,19 @@ import type { ScriptTemplate } from "@/lib/wz/reactor-builder";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 
-// Auto-detect: local dev uses ../server, prod uses /app/wz
+// Auto-detect: local dev uses ../server, prod uses /cosmic (writable volume)
 function getServerRoot(): string {
   if (process.env.WZ_ROOT) return process.env.WZ_ROOT;
-  // Check if we're in local dev (sibling server/ dir exists)
   const localServer = join(process.cwd(), "..", "server");
   if (existsSync(join(localServer, "wz"))) return join(localServer, "wz");
-  return "/app/wz";
+  return "/cosmic/wz";
 }
 
 function getScriptsRoot(): string {
   if (process.env.WZ_ROOT) return process.env.WZ_ROOT.replace("/wz", "/scripts");
   const localServer = join(process.cwd(), "..", "server");
   if (existsSync(join(localServer, "scripts"))) return join(localServer, "scripts");
-  return "/app/scripts";
+  return "/cosmic/scripts";
 }
 
 // Custom reactor IDs use 99XXXXX range to avoid ALL vanilla conflicts

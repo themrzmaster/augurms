@@ -29,7 +29,7 @@ function getServerRoot(): string {
   if (process.env.WZ_ROOT) return process.env.WZ_ROOT;
   const local = join(process.cwd(), "..", "server");
   if (existsSync(join(local, "wz"))) return join(local, "wz");
-  return "/app/wz";
+  return "/cosmic/wz";
 }
 
 function getScriptsRoot(): string {
@@ -37,7 +37,7 @@ function getScriptsRoot(): string {
     return process.env.WZ_ROOT.replace("/wz", "/scripts");
   const local = join(process.cwd(), "..", "server");
   if (existsSync(join(local, "scripts"))) return join(local, "scripts");
-  return "/app/scripts";
+  return "/cosmic/scripts";
 }
 
 const IMAGE_MODELS: Record<string, { modalities: string[] }> = {
