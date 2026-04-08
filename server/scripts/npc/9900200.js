@@ -9,7 +9,7 @@
  */
 
 var status;
-var DASHBOARD_URL = "http://192.168.21.161:3005"; // local: host.docker.internal or LAN IP; prod: https://augurms.com
+var DASHBOARD_URL = "https://augurms.com"; // prod: public; local: use LAN IP:3005
 var NPC_SECRET = "augur-npc-secret";
 
 function start() {

@@ -250,7 +250,7 @@ export default function LandingPage() {
           {[
             {
               title: "The Augur",
-              desc: `An omniscient AI oracle that watches player activity, economy, and progression \u2014 then autonomously tunes drop rates, EXP curves, and spawns events when the world needs them.${gmModel ? `\n\nCurrently powered by ${gmModel.split("/").pop()}.` : ""}`,
+              desc: `An AI oracle that watches the world and reshapes it. It tunes rates, spawns events, and answers player questions in-game as an NPC you can talk to in Henesys.${gmModel ? ` Powered by ${gmModel.split("/").pop()}.` : ""}`,
               icon: "\uD83E\uDDE0",
             },
             {
@@ -273,6 +273,53 @@ export default function LandingPage() {
               <p className="text-sm leading-relaxed text-text-secondary">{f.desc}</p>
             </div>
           ))}
+        </div>
+
+        {/* Meet the Augur NPC */}
+        <div className="mt-20 w-full max-w-4xl">
+          <div className="overflow-hidden rounded-2xl border border-accent-purple/20 bg-gradient-to-br from-bg-card/80 via-accent-purple/[0.03] to-bg-card/80 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-8 p-8 sm:flex-row sm:items-start">
+              {/* NPC Image */}
+              <div className="relative shrink-0">
+                <div className="absolute inset-0 scale-125 rounded-full bg-accent-purple/10 blur-2xl" />
+                <Image
+                  src="/augur-npc.png"
+                  alt="The Augur NPC"
+                  width={180}
+                  height={180}
+                  className="relative rounded-xl drop-shadow-[0_0_20px_rgba(168,85,247,0.3)]"
+                />
+              </div>
+              {/* Content */}
+              <div className="flex-1 text-left">
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="text-2xl">{"\uD83D\uDD2E"}</span>
+                  <h2 className="text-2xl font-bold text-text-primary">Talk to the Augur</h2>
+                </div>
+                <p className="mb-4 text-sm leading-relaxed text-text-secondary">
+                  Find the Augur NPC in <strong className="text-text-primary">Henesys</strong> and ask it anything. It&apos;s an AI-powered oracle with access to live game data &mdash; type your question and get real answers, not canned dialogue.
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {[
+                    { label: "Item lookup", desc: "Search any item, see full stats" },
+                    { label: "Monster info", desc: "Stats, drops, and spawn maps" },
+                    { label: "Map details", desc: "NPCs, portals, and spawns" },
+                    { label: "Server rates", desc: "Current EXP, drop, meso rates" },
+                    { label: "Live events", desc: "Active events and treasure hunts" },
+                    { label: "Player search", desc: "Look up any character" },
+                  ].map((cap) => (
+                    <div key={cap.label} className="rounded-lg border border-border bg-bg-primary/40 px-3 py-2">
+                      <div className="text-xs font-semibold text-accent-purple">{cap.label}</div>
+                      <div className="text-[11px] text-text-muted">{cap.desc}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-4 text-xs text-text-muted">
+                  10 questions per day per character. The Augur remembers your conversation within the day.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Augur's Log */}
