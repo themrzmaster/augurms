@@ -5,6 +5,7 @@ primary_region = "iad"
 
 [env]
   PORT = "3000"
+  HOSTNAME = "::"
   NODE_ENV = "production"
   COSMIC_ROOT = "/cosmic"
 

@@ -9,7 +9,7 @@
  */
 
 var status;
-var DASHBOARD_URL = "https://augurms.com"; // prod: public; local: use LAN IP:3005
+var DASHBOARD_URL = "http://augur-ms.internal:3000"; // prod: Fly internal (IPv6); local: override to LAN IP:3005
 var NPC_SECRET = "augur-npc-secret";
 
 function start() {
@@ -55,7 +55,7 @@ function action(mode, type, selection) {
   }
 }
 
-function callAugurAPI(message) {
+function doHttpPost(baseUrl, message) {
   var HttpURLConnection = Java.type("java.net.HttpURLConnection");
   var URL = Java.type("java.net.URL");
   var BufferedReader = Java.type("java.io.BufferedReader");
@@ -64,13 +64,13 @@ function callAugurAPI(message) {
 
   var conn = null;
   try {
-    var url = new URL(DASHBOARD_URL + "/api/npc/chat");
+    var url = new URL(baseUrl + "/api/npc/chat");
     conn = url.openConnection();
     conn.setRequestMethod("POST");
     conn.setRequestProperty("Content-Type", "application/json");
     conn.setRequestProperty("X-NPC-Secret", NPC_SECRET);
     conn.setDoOutput(true);
-    conn.setConnectTimeout(10000);
+    conn.setConnectTimeout(5000);
     conn.setReadTimeout(60000); // LLM can take time
 
     var payload = JSON.stringify({
@@ -99,12 +99,24 @@ function callAugurAPI(message) {
     reader.close();
 
     return JSON.parse(sb.toString());
-  } catch (e) {
-    java.lang.System.out.println("[Augur] API error: " + e);
-    return { text: "The stars are clouded... I cannot reach the beyond right now." };
   } finally {
     if (conn != null) {
       try { conn.disconnect(); } catch (e2) {}
     }
+  }
+}
+
+function callAugurAPI(message) {
+  // Try Fly internal network first (fast, no Cloudflare), fall back to public URL
+  try {
+    return doHttpPost(DASHBOARD_URL, message);
+  } catch (e) {
+    java.lang.System.out.println("[Augur] Internal API failed (" + e + "), trying public URL...");
+  }
+  try {
+    return doHttpPost("https://augurms.com", message);
+  } catch (e2) {
+    java.lang.System.out.println("[Augur] Public API also failed: " + e2);
+    return { text: "The stars are clouded... I cannot reach the beyond right now." };
   }
 }
