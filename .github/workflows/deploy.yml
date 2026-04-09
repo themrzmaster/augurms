@@ -74,7 +74,7 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Deploy game server
-        run: flyctl deploy ./server --remote-only
+        run: flyctl deploy ./server --remote-only --build-arg CACHE_BUST=${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 

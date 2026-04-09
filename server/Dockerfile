@@ -42,6 +42,8 @@ RUN curl -fsSL "$WZ_URL" -o /tmp/wz.tar.gz && tar xzf /tmp/wz.tar.gz && rm /tmp/
 # Copy the JAR we build earlier.
 COPY --from=jar /opt/cosmic/target/Cosmic.jar ./Server.jar
 # Scripts are sourced on server startup, so you can mount over them for quicker redeploy.
+# CACHE_BUST ensures Docker doesn't serve stale script layers from build cache
+ARG CACHE_BUST=0
 COPY scripts ./scripts/
 # Config is read on server startup, so you can mount over it for quicker redeploy.
 COPY config.yaml ./
