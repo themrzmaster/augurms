@@ -35,11 +35,24 @@ import tools.Pair;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.Iterator;
+import java.util.ArrayList;
+import java.util.List;
 
 public class WhoDropsCommand extends Command {
     {
         setDescription("Show what drops an item.");
+    }
+
+    private static class ItemDropInfo {
+        final int itemId;
+        final String itemName;
+        final int dropCount;
+
+        ItemDropInfo(int itemId, String itemName, int dropCount) {
+            this.itemId = itemId;
+            this.itemName = itemName;
+            this.dropCount = dropCount;
+        }
     }
 
     @Override
@@ -53,39 +66,82 @@ public class WhoDropsCommand extends Command {
         if (c.tryacquireClient()) {
             try {
                 String searchString = player.getLastCommandMessage();
-                String output = "";
-                Iterator<Pair<Integer, String>> listIterator = ItemInformationProvider.getInstance().getItemDataByName(searchString).iterator();
-                if (listIterator.hasNext()) {
-                    int count = 1;
-                    while (listIterator.hasNext() && count <= 3) {
-                        Pair<Integer, String> data = listIterator.next();
-                        output += "#b" + data.getRight() + "#k is dropped by:\r\n";
-                        try (Connection con = DatabaseConnection.getConnection();
-                             PreparedStatement ps = con.prepareStatement("SELECT dropperid FROM drop_data WHERE itemid = ? LIMIT 50")) {
-                            ps.setInt(1, data.getLeft());
+                List<Pair<Integer, String>> matches = ItemInformationProvider.getInstance().getItemDataByName(searchString);
 
-                            try (ResultSet rs = ps.executeQuery()) {
-                                while (rs.next()) {
-                                    String resultName = MonsterInformationProvider.getInstance().getMobNameFromId(rs.getInt("dropperid"));
-                                    if (resultName != null) {
-                                        output += resultName + ", ";
-                                    }
-                                }
-                            }
-                        } catch (Exception e) {
-                            player.dropMessage(6, "There was a problem retrieving the required data. Please try again.");
-                            e.printStackTrace();
-                            return;
-                        }
-                        output += "\r\n\r\n";
-                        count++;
-                    }
-                } else {
+                if (matches.isEmpty()) {
                     player.dropMessage(5, "The item you searched for doesn't exist.");
                     return;
                 }
 
-                c.getAbstractPlayerInteraction().npcTalk(NpcId.MAPLE_ADMINISTRATOR, output);
+                List<ItemDropInfo> itemsWithDrops = new ArrayList<>();
+                int queryLimit = Math.min(matches.size(), 25);
+
+                try (Connection con = DatabaseConnection.getConnection()) {
+                    // Phase 1: Get drop counts for each match and filter out items with no drops
+                    for (int i = 0; i < queryLimit; i++) {
+                        Pair<Integer, String> match = matches.get(i);
+                        int dropCount = 0;
+
+                        try (PreparedStatement ps = con.prepareStatement(
+                                "SELECT COUNT(*) FROM drop_data WHERE itemid = ?")) {
+                            ps.setInt(1, match.getLeft());
+                            try (ResultSet rs = ps.executeQuery()) {
+                                if (rs.next()) {
+                                    dropCount = rs.getInt(1);
+                                }
+                            }
+                        }
+
+                        if (dropCount > 0) {
+                            itemsWithDrops.add(new ItemDropInfo(match.getLeft(), match.getRight(), dropCount));
+                        }
+                    }
+
+                    if (itemsWithDrops.isEmpty()) {
+                        player.dropMessage(5, "No monsters drop items matching that name.");
+                        return;
+                    }
+
+                    // Sort by drop count descending (items with most drop sources first)
+                    itemsWithDrops.sort((a, b) -> b.dropCount - a.dropCount);
+
+                    // Phase 2: Build output for top 10 items
+                    StringBuilder output = new StringBuilder();
+                    int displayCount = 0;
+
+                    for (ItemDropInfo item : itemsWithDrops) {
+                        if (displayCount >= 10) break;
+
+                        output.append("#b").append(item.itemName)
+                              .append(" (").append(item.itemId).append(")#k is dropped by:\r\n");
+
+                        try (PreparedStatement ps = con.prepareStatement(
+                                "SELECT dropperid FROM drop_data WHERE itemid = ? LIMIT 50")) {
+                            ps.setInt(1, item.itemId);
+                            try (ResultSet rs = ps.executeQuery()) {
+                                boolean first = true;
+                                while (rs.next()) {
+                                    String resultName = MonsterInformationProvider.getInstance()
+                                            .getMobNameFromId(rs.getInt("dropperid"));
+                                    if (resultName != null) {
+                                        if (!first) {
+                                            output.append(", ");
+                                        }
+                                        output.append(resultName);
+                                        first = false;
+                                    }
+                                }
+                            }
+                        }
+                        output.append("\r\n\r\n");
+                        displayCount++;
+                    }
+
+                    c.getAbstractPlayerInteraction().npcTalk(NpcId.MAPLE_ADMINISTRATOR, output.toString());
+                } catch (Exception e) {
+                    player.dropMessage(6, "There was a problem retrieving the required data. Please try again.");
+                    e.printStackTrace();
+                }
             } finally {
                 c.releaseClient();
             }
