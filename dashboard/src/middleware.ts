@@ -16,13 +16,20 @@ const PUBLIC_PATHS = [
   "/worldmap",
   "/api/worldmap/",
   "/api/gm/actions/map",
+  "/api/npc/", // handles its own x-npc-secret auth at the route layer
   "/rankings",
 ];
 
+// Exact-match paths and prefix-match paths kept separate — a single "/"
+// entry in a prefix check would match every request (pathname always starts
+// with "/") and effectively disable the whole middleware, which is exactly
+// the bug this fixes.
 function isPublicPath(pathname: string) {
-  return PUBLIC_PATHS.some((p) =>
-    p === pathname || (p.endsWith("/") && pathname.startsWith(p))
-  );
+  return PUBLIC_PATHS.some((p) => {
+    if (p === pathname) return true;
+    if (p.endsWith("/") && p.length > 1 && pathname.startsWith(p)) return true;
+    return false;
+  });
 }
 
 function isPublicAsset(pathname: string) {
