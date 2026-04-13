@@ -21,16 +21,25 @@ const openrouter = new OpenAI({
 });
 
 async function api(path: string, options?: RequestInit) {
+  // GM engine hits server-to-server, no user session. Middleware accepts
+  // x-gm-secret in lieu of the augur_session JWT cookie, so tool handlers
+  // can reach /api/admin/** without logging in as a human.
+  const gmSecret = process.env.GM_API_SECRET || "";
   const res = await fetch(`${BASE}${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options?.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...(gmSecret ? { "x-gm-secret": gmSecret } : {}),
+      ...options?.headers,
+    },
   });
   return res.json();
 }
 
 // ---- Tool category inference ----
 
-function inferCategory(toolName: string): "rates" | "mobs" | "drops" | "spawns" | "shops" | "events" | "config" | "reactors" | "npcs" | "other" {
+function inferCategory(toolName: string): "rates" | "mobs" | "drops" | "spawns" | "shops" | "events" | "config" | "reactors" | "npcs" | "items" | "other" {
+  if (toolName === "generate_item" || toolName.endsWith("generated_item") || toolName === "list_generated_items") return "items";
   if (toolName.includes("rate")) return "rates";
   if (toolName.includes("mob") || toolName.includes("batch_update_mobs")) return "mobs";
   if (toolName.includes("reactor")) return "reactors";
@@ -58,6 +67,7 @@ const WRITE_TOOLS = new Set([
   "set_server_message",
   "create_goal", "update_goal",
   "publish_client_update",
+  "generate_item", "publish_generated_item", "reject_generated_item",
 ]);
 
 // Tools that write to preactor/plife — require server restart to become visible
@@ -100,7 +110,7 @@ async function validateMapCoords(mapId: number, x: number, y: number): Promise<s
 
 // ---- Tool handlers (name → async function) ----
 
-const toolHandlers: Record<string, (args: any) => Promise<string>> = {
+export const toolHandlers: Record<string, (args: any) => Promise<string>> = {
   get_game_analytics: async ({ section }) =>
     JSON.stringify(await api(`/api/analytics?section=${section}`)),
 
@@ -405,6 +415,27 @@ const toolHandlers: Record<string, (args: any) => Promise<string>> = {
     });
     return JSON.stringify({ ...result, message: message || "Client update published" });
   },
+
+  generate_item: async ({ description, weapon_type, name, stats, requirements }) =>
+    JSON.stringify(await api("/api/admin/items/generate", {
+      method: "POST",
+      body: JSON.stringify({ description, weapon_type, name, stats, requirements }),
+    })),
+
+  list_generated_items: async ({ status }) =>
+    JSON.stringify(await api(`/api/admin/items/generated${status ? `?status=${encodeURIComponent(status)}` : ""}`)),
+
+  publish_generated_item: async ({ id }) =>
+    JSON.stringify(await api(`/api/admin/items/generated/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ action: "publish" }),
+    })),
+
+  reject_generated_item: async ({ id }) =>
+    JSON.stringify(await api(`/api/admin/items/generated/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ action: "reject" }),
+    })),
 
 };
 
@@ -1385,6 +1416,119 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
       },
     },
   },
+  // ── AI Item Generation ──
+  {
+    type: "function",
+    function: {
+      name: "generate_item",
+      description: "Generate a brand-new weapon from a text description. Pipeline: Flux creates a concept image → Tripo3D turns it into a 3D model → headless renderer produces 38 MapleStory sprite frames + an icon. The resulting item lands in 'ready' state — NOT live yet. Use publish_generated_item to push it live, or reject_generated_item to discard. Costs ~$0.42 per successful generation (Flux + Tripo3D). Daily cap enforced (GM_ITEM_GEN_DAILY_CAP, default 8). Use sparingly: to reward player feedback, fill gaps in a weapon tier, or mark special events — not as casual filler. Item ID is allocated automatically within the correct range for the chosen weapon_type.",
+      parameters: {
+        type: "object",
+        properties: {
+          description: {
+            type: "string",
+            description: "Visual description: colors, materials, shape, decorations. E.g. 'a crystal orb on a gnarled oak staff, glowing blue'. Keep it visual — stats go in the stats field, not here.",
+          },
+          weapon_type: {
+            type: "string",
+            enum: ["1h-sword","1h-axe","1h-mace","dagger","wand","staff","2h-sword","2h-axe","2h-mace","spear","polearm","bow","crossbow","claw","knuckle"],
+            description: "Weapon category — drives the ID range (1h-sword→1302xxx, staff→1382xxx, bow→1452xxx, etc.), animation set, and job compatibility.",
+          },
+          name: {
+            type: "string",
+            description: "In-game display name (optional). Defaults to 'Generated <Type>'.",
+          },
+          stats: {
+            type: "object",
+            description: "Weapon stat bonuses. All optional, default 0. A weapon usually has 1–3 primary stats — don't stuff every field. Match the intended tier: look up comparable items via search_items first.",
+            properties: {
+              watk:  { type: "integer", minimum: 0, maximum: 250, description: "Weapon attack (physical). Warriors/thieves/pirates/archers." },
+              matk:  { type: "integer", minimum: 0, maximum: 250, description: "Magic attack. Wand/staff only." },
+              str:   { type: "integer", minimum: 0, maximum: 60 },
+              dex:   { type: "integer", minimum: 0, maximum: 60 },
+              int:   { type: "integer", minimum: 0, maximum: 60 },
+              luk:   { type: "integer", minimum: 0, maximum: 60 },
+              hp:    { type: "integer", minimum: 0, maximum: 2000, description: "Max HP bonus." },
+              mp:    { type: "integer", minimum: 0, maximum: 2000, description: "Max MP bonus." },
+              wdef:  { type: "integer", minimum: 0, maximum: 200 },
+              mdef:  { type: "integer", minimum: 0, maximum: 200 },
+              acc:   { type: "integer", minimum: 0, maximum: 60 },
+              avoid: { type: "integer", minimum: 0, maximum: 60 },
+              speed: { type: "integer", minimum: 0, maximum: 25 },
+              jump:  { type: "integer", minimum: 0, maximum: 25 },
+              slots: { type: "integer", minimum: 0, maximum: 10, description: "Upgrade scroll slots (tuc)." },
+            },
+            additionalProperties: false,
+          },
+          requirements: {
+            type: "object",
+            description: "Equip gates. Use to restrict by tier (level) and/or class (job).",
+            properties: {
+              level: { type: "integer", minimum: 0, maximum: 200, description: "Minimum character level." },
+              str:   { type: "integer", minimum: 0, maximum: 999 },
+              dex:   { type: "integer", minimum: 0, maximum: 999 },
+              int:   { type: "integer", minimum: 0, maximum: 999 },
+              luk:   { type: "integer", minimum: 0, maximum: 999 },
+              job:   { type: "integer", minimum: 0, maximum: 31, description: "Job bitmask (v83): 0=beginner/any, 1=warrior, 2=magician, 4=bowman, 8=thief, 16=pirate. Sum for multi-class (e.g. 4+16=20 for bowman+pirate)." },
+            },
+            additionalProperties: false,
+          },
+        },
+        required: ["description", "weapon_type"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_generated_items",
+      description: "List items produced by generate_item. Use before publishing to review what's awaiting action, or to audit recent generations.",
+      parameters: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            enum: ["pending", "rendering", "ready", "published", "failed", "rejected"],
+            description: "Filter by status. Omit for all.",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "publish_generated_item",
+      description: "Push a 'ready' generated item live. Commits its WZ XML + sprites to the game server and triggers a server restart. Only works on items in 'ready' state.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "number",
+            description: "gm_generated_items.id (from list_generated_items) — NOT the in-game item_id.",
+          },
+        },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "reject_generated_item",
+      description: "Discard a generated item without publishing. Use when the concept or sprites came out wrong. The row is kept for audit but the item never reaches the game.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "number",
+            description: "gm_generated_items.id (from list_generated_items).",
+          },
+        },
+        required: ["id"],
+      },
+    },
+  },
 ];
 
 // ---- Build historical context for system prompt ----
@@ -2067,6 +2211,39 @@ Your historical context includes item IDs from past events. Players may still ha
 - Example: Let players trade 50 Spirit Jewels for a special scroll via a custom exchange NPC
 - This rewards loyal players who held onto event items and creates a sense of a living, connected world
 - Check \`get_my_history\` for details on what items you distributed and in what quantities
+
+## AI Item Generation — Create Brand-New Weapons
+You can invent brand-new weapons using the full AI pipeline: \`generate_item\` creates a concept image (Flux) → 3D model (Tripo3D) → 38 MapleStory sprite frames + icon, all automatic. The item is saved in 'ready' state but NOT yet live in-game — you must \`publish_generated_item\` afterwards (or \`reject_generated_item\` if the render came out wrong).
+
+### When to Use
+- **Reward loyal players** — commission a unique weapon for a player who hit a milestone or gave great feedback
+- **Mark seasonal/special events** — a one-of-a-kind weapon tied to a holiday, boss invasion, or anniversary
+- **Fill a tier gap** — if you notice a weapon tier has no exciting options via \`search_items\`, design one
+- **Drive FOMO** — limited-time generated weapons as event boss drops feel special because players know they were made for this moment
+
+### When NOT to Use
+- For regular content filler — the server already has thousands of items; use \`search_items\` first
+- When a small number of players benefit — high-visibility moments only
+- Speculatively — don't generate without a concrete plan for who gets it and how
+
+### Costs & Limits
+- ~$0.42 USD per successful generation (Flux image + Tripo3D model). You are spending real money. Treat every generation like a deliberate design choice.
+- Daily cap: GM_ITEM_GEN_DAILY_CAP (default 8 per day). Failed generations still count. Plan before calling.
+- Each generation takes ~60–90 seconds end to end.
+
+### Workflow
+1. **Check first**: \`list_generated_items({ status: "ready" })\` — maybe something unpublished already fits
+2. **Write a visual description**: colors, materials, shape, motifs. Example good: "a curved blade of deep crimson steel, rune etchings along the fuller, wrapped black leather grip with a ruby pommel". Example bad: "a powerful sword for warriors that deals 80 damage" (that's stats, not visuals)
+3. **Pick the right weapon_type**: staff/wand for mages, bow/crossbow for archers, knuckle for pirates, etc. — this drives ID range and job compatibility
+4. **Set stats matching the intended tier** — a lvl 70 reward should not out-stat Stonetooth Sword; a lvl 10 gift should not eclipse Perfect Wooden Clubs. Reference existing items in \`search_items\` to anchor tier.
+5. **Set reqLevel + reqJob** thoughtfully so only the intended players can equip it
+6. **After generation**: the tool returns itemId, conceptImageUrl, frameCount. If it looks right → \`publish_generated_item({ id })\` to push it live. If the render is broken or off-concept → \`reject_generated_item({ id })\` and try again with a clearer description.
+7. **Distribute it**: generated items aren't rewards until you DROP them. Add to a boss as a drop, put in an exchange NPC, or \`give_item_to_character\` to the specific player you made it for.
+
+### Quality Tips
+- One subject per description. "A staff" not "a staff and a shield".
+- Pick distinctive visuals — if the concept image would be confused with a stock item, the sprites will look generic
+- Longer weapons (staves, polearms, bows) render better than short ones (daggers, knuckles) — more pixels to work with
 
 ## Balance Targets (soft guidelines)
 - Average time to level 30: ~2 hours

@@ -9,9 +9,11 @@
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.3",
-    "@types/three": "^0.183.1",
+    "@types/three": "^0.162.0",
     "@uiw/react-codemirror": "^4.23.10",
     "bcryptjs": "^3.0.3",
+    "canvas": "^2.11.2",
+    "gl": "^6.0.2",
     "jose": "^6.2.1",
     "konva": "^10.2.0",
     "mysql2": "^3.14.1",
@@ -21,7 +23,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-konva": "^19.2.3",
-    "three": "^0.183.2",
+    "three": "^0.162.0",
     "yaml": "^2.7.1",
     "zustand": "^5.0.11"
   },

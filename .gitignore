@@ -15,6 +15,7 @@ mcp-server/node_modules/
 # Dashboard
 dashboard/node_modules/
 dashboard/.next/
+dashboard/test-output/
 
 # Server local artifacts
 server/database/docker-db-data/

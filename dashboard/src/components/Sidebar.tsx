@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/accounts", label: "Accounts", icon: "👤" },
   { href: "/characters", label: "Characters", icon: "⚔️" },
   { href: "/items", label: "Items", icon: "🎒" },
+  { href: "/items/generated", label: "AI Items", icon: "✨" },
   { href: "/reactors", label: "Reactors", icon: "💥" },
   { href: "/mobs", label: "Mobs", icon: "👾" },
   { href: "/config", label: "Config", icon: "⚙️" },
