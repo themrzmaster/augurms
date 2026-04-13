@@ -9,8 +9,16 @@ const openrouter = new OpenAI({
 });
 
 async function api(path: string) {
+  // Augur's tool handlers are server-to-server self-calls. With middleware
+  // auth enforced, trusted internal callers identify via x-gm-secret (the
+  // same secret used by the GM cron). This is separate from the NPC_SECRET
+  // the external game server uses to hit /api/npc/chat.
+  const gmSecret = process.env.GM_API_SECRET || "";
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(gmSecret ? { "x-gm-secret": gmSecret } : {}),
+    },
   });
   return res.json();
 }
