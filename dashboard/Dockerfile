@@ -3,7 +3,7 @@ FROM node:20-bookworm-slim AS base
 # System libs needed at build time to compile `canvas` and `gl` native addons.
 # `gl` (headless-gl) needs mesa/X11 headers; `canvas` needs cairo/pango/libjpeg/etc.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 make g++ pkg-config \
+      python3 python-is-python3 make g++ pkg-config \
       libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev \
       libxi-dev libgl1-mesa-dev libglu1-mesa-dev \
       ca-certificates \
