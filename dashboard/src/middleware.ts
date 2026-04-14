@@ -18,6 +18,7 @@ const PUBLIC_PATHS = [
   "/api/gm/actions/map",
   "/api/npc/", // handles its own x-npc-secret auth at the route layer
   "/rankings",
+  "/api/rankings",
 ];
 
 // Exact-match paths and prefix-match paths kept separate — a single "/"
