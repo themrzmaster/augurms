@@ -37,7 +37,14 @@ export function getPool(): mysql.Pool {
     pool = mysql.createPool({
       ...getDbConfig(),
       waitForConnections: true,
-      connectionLimit: 5,
+      connectionLimit: 15,
+      // Evict idle conns after 60s so a DB restart doesn't leave the pool
+      // holding dead TCP sockets that hang the next request.
+      maxIdle: 5,
+      idleTimeout: 60_000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 30_000,
+      connectTimeout: 10_000,
     });
   }
   return pool;
