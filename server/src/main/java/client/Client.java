@@ -986,93 +986,108 @@ public class Client extends ChannelInboundHandlerAdapter {
     }
 
     private void disconnectInternal(boolean shutdown, boolean cashshop) {//once per Client instance
-        if (player != null && player.isLoggedin() && player.getClient() != null) {
-            final int messengerid = player.getMessenger() == null ? 0 : player.getMessenger().getId();
-            //final int fid = player.getFamilyId();
-            final BuddyList bl = player.getBuddylist();
-            final MessengerCharacter chrm = new MessengerCharacter(player, 0);
-            final GuildCharacter chrg = player.getMGC();
-            final Guild guild = player.getGuild();
+        // Outer try/finally guarantees accounts.loggedin gets reset even if the
+        // player cleanup below throws. Without this, an exception in logOff /
+        // saveCharToDB / wserv.removePlayer leaves loggedin=2 in the DB and the
+        // player can't re-login ("This ID is already logged in") until a server
+        // restart wipes it via Server.setAllLoggedOut().
+        try {
+            if (player != null && player.isLoggedin() && player.getClient() != null) {
+                final int messengerid = player.getMessenger() == null ? 0 : player.getMessenger().getId();
+                //final int fid = player.getFamilyId();
+                final BuddyList bl = player.getBuddylist();
+                final MessengerCharacter chrm = new MessengerCharacter(player, 0);
+                final GuildCharacter chrg = player.getMGC();
+                final Guild guild = player.getGuild();
 
-            player.cancelMagicDoor();
+                player.cancelMagicDoor();
 
-            final World wserv = getWorldServer();   // obviously wserv is NOT null if this player was online on it
-            try {
-                removePlayer(wserv, this.serverTransition);
+                final World wserv = getWorldServer();   // obviously wserv is NOT null if this player was online on it
+                try {
+                    removePlayer(wserv, this.serverTransition);
 
-                if (!(channel == -1 || shutdown)) {
-                    if (!cashshop) {
-                        if (!this.serverTransition) { // meaning not changing channels
-                            if (messengerid > 0) {
-                                wserv.leaveMessenger(messengerid, chrm);
+                    if (!(channel == -1 || shutdown)) {
+                        if (!cashshop) {
+                            if (!this.serverTransition) { // meaning not changing channels
+                                if (messengerid > 0) {
+                                    wserv.leaveMessenger(messengerid, chrm);
+                                }
+                                                            /*
+                                                            if (fid > 0) {
+                                                                    final Family family = worlda.getFamily(fid);
+                                                                    family.
+                                                            }
+                                                            */
+
+                                player.forfeitExpirableQuests();    //This is for those quests that you have to stay logged in for a certain amount of time
+
+                                if (guild != null) {
+                                    final Server server = Server.getInstance();
+                                    server.setGuildMemberOnline(player, false, player.getClient().getChannel());
+                                    player.sendPacket(GuildPackets.showGuildInfo(player));
+                                }
+                                if (bl != null) {
+                                    wserv.loggedOff(player.getName(), player.getId(), channel, player.getBuddylist().getBuddyIds());
+                                }
                             }
-                                                        /*      
-                                                        if (fid > 0) {
-                                                                final Family family = worlda.getFamily(fid);
-                                                                family.
-                                                        }
-                                                        */
-
-                            player.forfeitExpirableQuests();    //This is for those quests that you have to stay logged in for a certain amount of time
-
-                            if (guild != null) {
-                                final Server server = Server.getInstance();
-                                server.setGuildMemberOnline(player, false, player.getClient().getChannel());
-                                player.sendPacket(GuildPackets.showGuildInfo(player));
-                            }
-                            if (bl != null) {
-                                wserv.loggedOff(player.getName(), player.getId(), channel, player.getBuddylist().getBuddyIds());
+                        } else {
+                            if (!this.serverTransition) { // if dc inside of cash shop.
+                                if (bl != null) {
+                                    wserv.loggedOff(player.getName(), player.getId(), channel, player.getBuddylist().getBuddyIds());
+                                }
                             }
                         }
+                    }
+                } catch (final Exception e) {
+                    log.error("Account stuck", e);
+                } finally {
+                    if (!this.serverTransition) {
+                        if (chrg != null) {
+                            chrg.setCharacter(null);
+                        }
+                        wserv.removePlayer(player);
+                        //getChannelServer().removePlayer(player); already being done
+
+                        player.saveCooldowns();
+                        player.cancelAllDebuffs();
+                        player.saveCharToDB(true);
+
+                        player.logOff();
+                        if (YamlConfig.config.server.INSTANT_NAME_CHANGE) {
+                            player.doPendingNameChange();
+                        }
+                        clear();
                     } else {
-                        if (!this.serverTransition) { // if dc inside of cash shop.
-                            if (bl != null) {
-                                wserv.loggedOff(player.getName(), player.getId(), channel, player.getBuddylist().getBuddyIds());
-                            }
-                        }
+                        getChannelServer().removePlayer(player);
+
+                        player.saveCooldowns();
+                        player.cancelAllDebuffs();
+                        player.saveCharToDB();
                     }
                 }
-            } catch (final Exception e) {
-                log.error("Account stuck", e);
-            } finally {
-                if (!this.serverTransition) {
-                    if (chrg != null) {
-                        chrg.setCharacter(null);
-                    }
-                    wserv.removePlayer(player);
-                    //getChannelServer().removePlayer(player); already being done
+            }
+        } finally {
+            try {
+                SessionCoordinator.getInstance().closeSession(this, false);
+            } catch (Throwable t) {
+                log.error("Failed to close session for accId {}", accId, t);
+            }
 
-                    player.saveCooldowns();
-                    player.cancelAllDebuffs();
-                    player.saveCharToDB(true);
+            try {
+                if (!serverTransition && isLoggedIn()) {
+                    updateLoginState(Client.LOGIN_NOTLOGGEDIN);
 
-                    player.logOff();
-                    if (YamlConfig.config.server.INSTANT_NAME_CHANGE) {
-                        player.doPendingNameChange();
-                    }
                     clear();
                 } else {
-                    getChannelServer().removePlayer(player);
+                    if (!Server.getInstance().hasCharacteridInTransition(this)) {
+                        updateLoginState(Client.LOGIN_NOTLOGGEDIN);
+                    }
 
-                    player.saveCooldowns();
-                    player.cancelAllDebuffs();
-                    player.saveCharToDB();
+                    engines = null; // thanks Tochi for pointing out a NPE here
                 }
+            } catch (Throwable t) {
+                log.error("Failed to reset loggedin state for accId {}", accId, t);
             }
-        }
-
-        SessionCoordinator.getInstance().closeSession(this, false);
-
-        if (!serverTransition && isLoggedIn()) {
-            updateLoginState(Client.LOGIN_NOTLOGGEDIN);
-
-            clear();
-        } else {
-            if (!Server.getInstance().hasCharacteridInTransition(this)) {
-                updateLoginState(Client.LOGIN_NOTLOGGEDIN);
-            }
-
-            engines = null; // thanks Tochi for pointing out a NPE here
         }
     }
 
