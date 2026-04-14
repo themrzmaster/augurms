@@ -69,6 +69,25 @@ interface Goal {
   lastChecked: string | null;
 }
 
+interface CodexRun {
+  id: number;
+  executedAt: string;
+  sessionId: string;
+  sessionStatus: string | null;
+  sessionSummary: string | null;
+  title: string;
+  area: string | null;
+  task: string | null;
+  status: string;
+  prUrl: string | null;
+  prNumber: number | null;
+  issueUrl: string | null;
+  runUrl: string | null;
+  branchSlug: string | null;
+  trackingId: string | null;
+  reason: string | null;
+}
+
 // A chat message: either user text or a GM response (log entries + session)
 interface ChatMessage {
   role: "user" | "gm";
@@ -452,6 +471,138 @@ function GoalsPanel() {
   );
 }
 
+// ---- Codex Runs Panel ----
+
+const CODEX_STATUS_STYLE: Record<string, { dot: string; label: string; labelClass: string }> = {
+  pr_opened:      { dot: "bg-accent-green",  label: "PR opened",   labelClass: "text-accent-green" },
+  abstained:      { dot: "bg-accent-orange", label: "Abstained",   labelClass: "text-accent-orange" },
+  pending:        { dot: "bg-accent-blue animate-pulse", label: "Pending", labelClass: "text-accent-blue" },
+  in_progress:    { dot: "bg-accent-blue animate-pulse", label: "In progress", labelClass: "text-accent-blue" },
+  failed:         { dot: "bg-accent-red",    label: "Failed",      labelClass: "text-accent-red" },
+  rate_limited:   { dot: "bg-accent-red/70", label: "Rate limited",labelClass: "text-accent-red/80" },
+  completed_no_output: { dot: "bg-text-muted", label: "No output", labelClass: "text-text-muted" },
+  unknown:        { dot: "bg-text-muted",    label: "Unknown",     labelClass: "text-text-muted" },
+};
+
+function CodexRunsPanel() {
+  const [runs, setRuns] = useState<CodexRun[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  const fetchRuns = useCallback(async () => {
+    try {
+      const res = await fetch("/api/gm/codex-runs?limit=10");
+      const data = await res.json();
+      setRuns(data.runs || []);
+    } catch {}
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchRuns();
+    const t = setInterval(fetchRuns, 15_000);
+    return () => clearInterval(t);
+  }, [fetchRuns]);
+
+  if (loading) return null;
+
+  return (
+    <div className="rounded-xl border border-border bg-bg-card p-4">
+      <div className="flex items-center justify-between mb-2.5">
+        <div>
+          <h3 className="text-sm font-semibold text-text-primary">Codex Runs</h3>
+          <p className="text-[10px] text-text-muted mt-0.5">Last 10 <code className="text-[10px]">delegate_code_change</code> dispatches</p>
+        </div>
+        <button onClick={fetchRuns}
+          className="text-[11px] font-medium text-accent-blue hover:text-accent-blue/80 transition-colors">
+          Refresh
+        </button>
+      </div>
+
+      {runs.length === 0 ? (
+        <p className="text-xs text-text-muted py-2">No code delegations yet.</p>
+      ) : (
+        <div className="space-y-1">
+          {runs.map((r) => {
+            const style = CODEX_STATUS_STYLE[r.status] || CODEX_STATUS_STYLE.unknown;
+            const isOpen = expanded === r.id;
+            return (
+              <div key={r.id} className="rounded-lg border border-border/40 bg-bg-secondary/40 hover:border-border transition-colors">
+                <button
+                  onClick={() => setExpanded(isOpen ? null : r.id)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left"
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${style.dot}`} />
+                  <span className="text-xs text-text-primary flex-1 truncate">{r.title}</span>
+                  {r.area && (
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-text-muted shrink-0">{r.area}</span>
+                  )}
+                  <span className={`text-[10px] font-semibold shrink-0 ${style.labelClass}`}>
+                    {style.label}
+                    {r.prNumber ? ` · #${r.prNumber}` : ""}
+                  </span>
+                  <span className="text-[10px] text-text-muted shrink-0 w-16 text-right">{timeAgo(r.executedAt)}</span>
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-border/40 px-3 py-2.5 space-y-2">
+                    {r.task && (
+                      <div>
+                        <p className="text-[9px] font-semibold uppercase tracking-wider text-text-muted mb-1">Task</p>
+                        <p className="text-[11px] text-text-secondary whitespace-pre-wrap">{r.task}</p>
+                      </div>
+                    )}
+                    {r.reason && (
+                      <div>
+                        <p className="text-[9px] font-semibold uppercase tracking-wider text-text-muted mb-1">
+                          {r.status === "abstained" ? "Abstain reason" : "Error"}
+                        </p>
+                        <p className="text-[11px] text-accent-orange whitespace-pre-wrap">{r.reason}</p>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {r.prUrl && (
+                        <a href={r.prUrl} target="_blank" rel="noopener noreferrer"
+                          className="rounded-md border border-accent-green/30 bg-accent-green/10 px-2.5 py-1 text-[10px] font-semibold text-accent-green hover:bg-accent-green/20 transition-colors">
+                          View PR &#8599;
+                        </a>
+                      )}
+                      {r.issueUrl && (
+                        <a href={r.issueUrl} target="_blank" rel="noopener noreferrer"
+                          className="rounded-md border border-accent-orange/30 bg-accent-orange/10 px-2.5 py-1 text-[10px] font-semibold text-accent-orange hover:bg-accent-orange/20 transition-colors">
+                          View abstain issue &#8599;
+                        </a>
+                      )}
+                      {r.runUrl && (
+                        <a href={r.runUrl} target="_blank" rel="noopener noreferrer"
+                          className="rounded-md border border-border px-2.5 py-1 text-[10px] font-semibold text-text-secondary hover:text-text-primary hover:border-border-light transition-colors">
+                          Workflow run &#8599;
+                        </a>
+                      )}
+                      {r.branchSlug && (
+                        <a href={`https://github.com/themrzmaster/augurms/tree/${r.branchSlug}`} target="_blank" rel="noopener noreferrer"
+                          className="rounded-md border border-border px-2.5 py-1 text-[10px] font-mono text-text-muted hover:text-text-primary hover:border-border-light transition-colors">
+                          {r.branchSlug}
+                        </a>
+                      )}
+                    </div>
+                    {r.sessionId && (
+                      <p className="text-[10px] text-text-muted pt-0.5">
+                        Session <span className="font-mono">{r.sessionId.slice(0, 8)}</span>
+                        {r.sessionStatus ? ` · ${r.sessionStatus}` : ""}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Past Session as compact card ----
 function PastSessionCard({ session, isScheduled, onRetry }: { session: PastSession; isScheduled: boolean; onRetry?: (prompt: string) => void }) {
   const [expanded, setExpanded] = useState(false);
@@ -693,6 +844,9 @@ export default function GameMasterPage() {
         <SchedulePanel />
         <GoalsPanel />
       </div>
+
+      {/* Codex delegation history */}
+      <CodexRunsPanel />
 
       {/* Chat area */}
       <div className="rounded-xl border border-border bg-bg-primary/50 overflow-hidden flex flex-col" style={{ height: "calc(100vh - 320px)", minHeight: "400px" }}>

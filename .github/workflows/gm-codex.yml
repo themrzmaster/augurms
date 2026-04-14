@@ -1,0 +1,216 @@
+name: GM Codex
+
+run-name: "gm-codex ${{ inputs.tracking_id }} — ${{ inputs.title }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      title:
+        description: Short PR title
+        required: true
+      task:
+        description: Natural-language task spec for Codex
+        required: true
+      criteria:
+        description: Acceptance criteria (optional)
+        required: false
+      area:
+        description: Area hint — server|dashboard|launcher|client|ci (optional)
+        required: false
+      branch_slug:
+        description: Target branch name (e.g. gm/<session>-<slug>)
+        required: true
+      tracking_id:
+        description: Tracking tag the GM uses to correlate runs
+        required: true
+
+concurrency:
+  group: gm-codex
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  codex:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PR_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "augur-gm[bot]"
+          git config user.email "augur-gm@users.noreply.github.com"
+          git checkout -b "${{ inputs.branch_slug }}"
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Configure Codex → OpenRouter
+        run: |
+          mkdir -p "$HOME/.codex"
+          cat > "$HOME/.codex/config.toml" <<'TOML'
+          model_provider = "openrouter"
+          model = "z-ai/glm-5.1"
+          model_reasoning_effort = "medium"
+
+          [model_providers.openrouter]
+          name = "openrouter"
+          base_url = "https://openrouter.ai/api/v1"
+          env_key = "OPENROUTER_API_KEY"
+          wire_api = "chat"
+          TOML
+
+      - name: Build Codex prompt
+        run: |
+          mkdir -p /tmp/codex
+          cat > /tmp/codex/prompt.txt <<'PROMPT_EOF'
+          You are acting on behalf of the AugurMS AI Game Master. This is a real private-server codebase; treat it with care.
+
+          Tracking ID: ${{ inputs.tracking_id }}
+          Area hint: ${{ inputs.area }}
+
+          TITLE:
+          ${{ inputs.title }}
+
+          TASK:
+          ${{ inputs.task }}
+
+          ACCEPTANCE CRITERIA:
+          ${{ inputs.criteria }}
+
+          HARD RULES:
+          1. Make the minimal, correct change. Do not add unrelated refactors, tests, comments, or cleanups.
+          2. Keep edits scoped to the area hint when one is provided.
+          3. If the request is NOT feasible via a code change (requires client/WZ work, a design call, external infra, secret rotation, a new service, or significant multi-step planning), DO NOT make speculative edits. End your run by printing EXACTLY one line on its own:
+                CANNOT_FIX: <one-sentence reason>
+             The surrounding workflow detects this and opens an abstain issue instead of a PR. Abstaining is a perfectly valid outcome.
+          4. Never touch: .github/workflows/deploy.yml, CLAUDE.md, any .env*, any file containing production secrets.
+          5. If you change Java in `server/`, run a quick sanity compile: `cd server && ./mvnw compile -q` (OpenJDK 21). If you change `dashboard/`, try `cd dashboard && npm run build` at the end. Skip verification if it would blow the time budget.
+          6. The PR will be reviewed by a human. Do not attempt to self-merge or push to main.
+          PROMPT_EOF
+
+      - name: Run Codex
+        id: codex
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          cat /tmp/codex/prompt.txt | codex exec \
+            --full-auto \
+            --sandbox workspace-write \
+            --output-last-message /tmp/codex/output.txt \
+            -
+
+      - name: Detect abstain signal
+        id: check
+        run: |
+          if [ -f /tmp/codex/output.txt ] && grep -q "^CANNOT_FIX:" /tmp/codex/output.txt; then
+            reason=$(grep "^CANNOT_FIX:" /tmp/codex/output.txt | head -1 | sed 's/^CANNOT_FIX:[[:space:]]*//')
+            {
+              echo "abstained=true"
+              echo "reason<<EOF"
+              echo "$reason"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "abstained=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open abstain issue
+        if: steps.check.outputs.abstained == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PR_TOKEN }}
+        run: |
+          body_file=$(mktemp)
+          cat > "$body_file" <<EOF
+          **Codex declined to make this change.**
+
+          Tracking ID: \`${{ inputs.tracking_id }}\`
+          Branch requested: \`${{ inputs.branch_slug }}\`
+          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          **Task:**
+          ${{ inputs.task }}
+
+          **Reason:**
+          ${{ steps.check.outputs.reason }}
+          EOF
+          gh issue create \
+            --title "[gm-abstain] ${{ inputs.title }}" \
+            --label "gm-abstained,ai-gm" \
+            --body-file "$body_file"
+
+      - name: Commit, push, open PR
+        if: steps.check.outputs.abstained != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PR_TOKEN }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            body_file=$(mktemp)
+            cat > "$body_file" <<EOF
+          **Codex ran but produced no changes.**
+
+          Tracking ID: \`${{ inputs.tracking_id }}\`
+          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          **Task:**
+          ${{ inputs.task }}
+
+          This may mean the change was not understood, the existing code already satisfies the task, or Codex chose to abstain silently. Treat as an abstain.
+          EOF
+            gh issue create \
+              --title "[gm-abstain] ${{ inputs.title }} (no-op)" \
+              --label "gm-abstained,ai-gm" \
+              --body-file "$body_file"
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "${{ inputs.title }}
+
+          Tracking: ${{ inputs.tracking_id }}"
+          git push origin "${{ inputs.branch_slug }}"
+
+          body_file=$(mktemp)
+          {
+            echo "**This PR was opened by the AugurMS AI Game Master via \`delegate_code_change\`.**"
+            echo ""
+            echo "Tracking ID: \`${{ inputs.tracking_id }}\`"
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ""
+            echo "### Task"
+            echo ""
+            cat <<'TASK_EOF'
+          ${{ inputs.task }}
+          TASK_EOF
+            echo ""
+            echo "### Acceptance criteria"
+            echo ""
+            cat <<'CRIT_EOF'
+          ${{ inputs.criteria }}
+          CRIT_EOF
+            echo ""
+            echo "### Codex output (truncated)"
+            echo ""
+            echo '```'
+            head -c 3500 /tmp/codex/output.txt 2>/dev/null || echo "(no output captured)"
+            echo ""
+            echo '```'
+            echo ""
+            echo "---"
+            echo "_PRs from this workflow are labeled \`ai-gm\` and are never auto-merged. A human reviews every one._"
+          } > "$body_file"
+
+          gh pr create \
+            --base main \
+            --head "${{ inputs.branch_slug }}" \
+            --title "[ai-gm] ${{ inputs.title }}" \
+            --label "ai-gm" \
+            --body-file "$body_file"

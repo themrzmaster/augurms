@@ -6,6 +6,10 @@ import type { GMSession, GMLogEntry } from "./types";
 const BASE = process.env.COSMIC_DASHBOARD_URL || "http://localhost:3000";
 const DEFAULT_MODEL = "moonshotai/kimi-k2.5";
 
+const GH_OWNER = "themrzmaster";
+const GH_REPO = "augurms";
+const GH_CODEX_WORKFLOW = "gm-codex.yml";
+
 async function getModel(): Promise<string> {
   try {
     const [row] = await dbQuery("SELECT model FROM gm_schedule WHERE id = 1");
@@ -38,7 +42,8 @@ async function api(path: string, options?: RequestInit) {
 
 // ---- Tool category inference ----
 
-function inferCategory(toolName: string): "rates" | "mobs" | "drops" | "spawns" | "shops" | "events" | "config" | "reactors" | "npcs" | "items" | "other" {
+function inferCategory(toolName: string): "rates" | "mobs" | "drops" | "spawns" | "shops" | "events" | "config" | "reactors" | "npcs" | "items" | "code" | "other" {
+  if (toolName === "delegate_code_change" || toolName === "check_code_change_status") return "code";
   if (toolName === "generate_item" || toolName.endsWith("generated_item") || toolName === "list_generated_items") return "items";
   if (toolName.includes("rate")) return "rates";
   if (toolName.includes("mob") || toolName.includes("batch_update_mobs")) return "mobs";
@@ -68,6 +73,7 @@ const WRITE_TOOLS = new Set([
   "create_goal", "update_goal",
   "publish_client_update",
   "generate_item", "publish_generated_item", "reject_generated_item",
+  "delegate_code_change",
 ]);
 
 // Tools that write to preactor/plife — require server restart to become visible
@@ -106,6 +112,56 @@ async function validateMapCoords(mapId: number, x: number, y: number): Promise<s
   } catch {
     return null; // can't validate, allow it
   }
+}
+
+// ---- GitHub helpers (for delegate_code_change) ----
+
+async function ghRequest(path: string, options?: RequestInit): Promise<Response> {
+  const token = process.env.GH_DISPATCH_TOKEN;
+  if (!token) throw new Error("GH_DISPATCH_TOKEN not configured — coding agent disabled");
+  return fetch(`https://api.github.com${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+}
+
+async function findCodexRunByTag(trackingId: string): Promise<{ html_url: string; status: string; conclusion: string | null; id: number } | null> {
+  try {
+    const res = await ghRequest(
+      `/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/${GH_CODEX_WORKFLOW}/runs?per_page=15`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const runs = data.workflow_runs || [];
+    return runs.find((r: any) => (r.display_title || r.name || "").includes(trackingId)) || null;
+  } catch { return null; }
+}
+
+async function findCodexPR(branchSlug: string): Promise<{ html_url: string; number: number; state: string } | null> {
+  try {
+    const res = await ghRequest(
+      `/repos/${GH_OWNER}/${GH_REPO}/pulls?head=${GH_OWNER}:${encodeURIComponent(branchSlug)}&state=all&per_page=5`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return Array.isArray(data) && data.length > 0 ? data[0] : null;
+  } catch { return null; }
+}
+
+async function findAbstainIssue(trackingId: string): Promise<{ html_url: string; title: string; body: string | null } | null> {
+  try {
+    const q = `repo:${GH_OWNER}/${GH_REPO} is:issue label:gm-abstained in:body ${trackingId}`;
+    const res = await ghRequest(`/search/issues?q=${encodeURIComponent(q)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.items?.[0] || null;
+  } catch { return null; }
 }
 
 // ---- Tool handlers (name → async function) ----
@@ -436,6 +492,136 @@ export const toolHandlers: Record<string, (args: any) => Promise<string>> = {
       method: "PATCH",
       body: JSON.stringify({ action: "reject" }),
     })),
+
+  delegate_code_change: async (args: any) => {
+    const { title, task, acceptance_criteria, area, __gm_session_id } = args;
+    if (!title || !task) return JSON.stringify({ status: "failed", error: "title and task are required" });
+    if (!process.env.GH_DISPATCH_TOKEN) {
+      return JSON.stringify({ status: "failed", error: "GH_DISPATCH_TOKEN not configured on the dashboard" });
+    }
+
+    // Daily cap: 3 successful dispatches per 24h
+    try {
+      const rows = await dbQuery<{ cnt: number }>(
+        "SELECT COUNT(*) as cnt FROM gm_actions WHERE tool_name = 'delegate_code_change' AND executed_at > DATE_SUB(NOW(), INTERVAL 1 DAY) AND tool_result NOT LIKE '%\"status\":\"rate_limited\"%' AND tool_result NOT LIKE '%\"status\":\"failed\"%'"
+      );
+      if ((rows[0] as any)?.cnt >= 3) {
+        return JSON.stringify({
+          status: "rate_limited",
+          error: "Daily cap of 3 delegate_code_change dispatches has been reached. Try again in ~24h.",
+        });
+      }
+    } catch { /* if table/query fails, allow */ }
+
+    const sessionTag = typeof __gm_session_id === "string" ? __gm_session_id.slice(0, 8) : crypto.randomUUID().slice(0, 8);
+    const slug = String(title).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "change";
+    const branchSlug = `gm/${sessionTag}-${slug}`;
+    const trackingId = `gmx-${sessionTag}-${Date.now().toString(36)}`;
+
+    const dispatchRes = await ghRequest(
+      `/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/${GH_CODEX_WORKFLOW}/dispatches`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ref: "main",
+          inputs: {
+            title: String(title).slice(0, 120),
+            task: String(task).slice(0, 4000),
+            criteria: acceptance_criteria ? String(acceptance_criteria).slice(0, 1500) : "",
+            area: area ? String(area) : "",
+            branch_slug: branchSlug,
+            tracking_id: trackingId,
+          },
+        }),
+      }
+    );
+    if (!dispatchRes.ok) {
+      const body = await dispatchRes.text().catch(() => "");
+      return JSON.stringify({
+        status: "failed",
+        error: `GitHub workflow dispatch failed: ${dispatchRes.status}`,
+        detail: body.slice(0, 300),
+      });
+    }
+
+    // Poll up to 90s (every 5s) for a PR / abstain issue / run failure
+    const deadline = Date.now() + 90_000;
+    let run: Awaited<ReturnType<typeof findCodexRunByTag>> = null;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 5000));
+
+      const [pr, issue, r] = await Promise.all([
+        findCodexPR(branchSlug),
+        findAbstainIssue(trackingId),
+        findCodexRunByTag(trackingId),
+      ]);
+      run = r || run;
+
+      if (pr) {
+        return JSON.stringify({
+          status: "pr_opened",
+          prUrl: pr.html_url,
+          prNumber: pr.number,
+          branchSlug,
+          trackingId,
+          runUrl: run?.html_url,
+          note: "Codex opened a PR. Review and merge from GitHub — this is NEVER auto-merged.",
+        });
+      }
+      if (issue) {
+        return JSON.stringify({
+          status: "abstained",
+          issueUrl: issue.html_url,
+          reason: issue.title,
+          branchSlug,
+          trackingId,
+          runUrl: run?.html_url,
+          note: "Codex declined to make this change. Do not immediately retry the same task — escalate or rephrase.",
+        });
+      }
+      if (run && run.status === "completed" && run.conclusion && run.conclusion !== "success") {
+        return JSON.stringify({
+          status: "failed",
+          conclusion: run.conclusion,
+          runUrl: run.html_url,
+          branchSlug,
+          trackingId,
+          note: "Workflow failed before producing a result.",
+        });
+      }
+    }
+
+    return JSON.stringify({
+      status: "pending",
+      branchSlug,
+      trackingId,
+      runUrl: run?.html_url,
+      note: "Codex is still working. Use check_code_change_status with branchSlug + trackingId in a later session to see the outcome.",
+    });
+  },
+
+  check_code_change_status: async ({ branchSlug, trackingId }: any) => {
+    if (!branchSlug || !trackingId) {
+      return JSON.stringify({ status: "failed", error: "branchSlug and trackingId are both required" });
+    }
+    const [pr, issue, run] = await Promise.all([
+      findCodexPR(branchSlug),
+      findAbstainIssue(trackingId),
+      findCodexRunByTag(trackingId),
+    ]);
+    if (pr) return JSON.stringify({ status: "pr_opened", prUrl: pr.html_url, prNumber: pr.number, prState: pr.state, runUrl: run?.html_url });
+    if (issue) return JSON.stringify({ status: "abstained", issueUrl: issue.html_url, reason: issue.title, runUrl: run?.html_url });
+    if (run) {
+      if (run.status === "completed" && run.conclusion && run.conclusion !== "success") {
+        return JSON.stringify({ status: "failed", conclusion: run.conclusion, runUrl: run.html_url });
+      }
+      if (run.status !== "completed") {
+        return JSON.stringify({ status: "in_progress", runUrl: run.html_url });
+      }
+      return JSON.stringify({ status: "completed_no_output", runUrl: run.html_url, note: "Workflow finished but produced no PR or abstain issue. Check logs." });
+    }
+    return JSON.stringify({ status: "unknown", note: "No run/PR/issue matches that trackingId yet." });
+  },
 
 };
 
@@ -1416,6 +1602,54 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
       },
     },
   },
+
+  // ── Delegated Code Changes (Codex on GitHub) ──
+  {
+    type: "function",
+    function: {
+      name: "delegate_code_change",
+      description: "Dispatch a coding task to OpenAI Codex running in a GitHub Actions sandbox. Codex works on a fresh checkout, either opens a branch + PR (labeled `ai-gm`) or reports `CANNOT_FIX` and opens an issue labeled `gm-abstained`. Use ONLY when the problem is in the codebase itself (Java server, dashboard TS, launcher, workflows) and no other GM tool can address it — e.g. a hardcoded cap in Java, a broken handler in the dashboard, a missing API route. Do NOT use for data/config changes (use update_config, update_rates, create_event, etc.). PRs are NEVER auto-merged; a human reviews. Limits: 1 dispatch per GM session, 3 per 24h. The tool polls for up to ~90s to fetch the PR URL; if still pending, it returns a tracking ID you can look up later with check_code_change_status.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            description: "Short imperative summary of the change. Becomes the PR title. Example: \"Raise @fm teleport level cap to 30\".",
+          },
+          task: {
+            type: "string",
+            description: "Detailed natural-language spec Codex will act on. State the problem, what should change, and any relevant file/area hints. Be specific — Codex does better with concrete intent than with vague goals.",
+          },
+          acceptance_criteria: {
+            type: "string",
+            description: "Optional — how to verify the change is correct. Example: \"npm run build passes; @fm accepts level 20 players\".",
+          },
+          area: {
+            type: "string",
+            enum: ["server", "dashboard", "launcher", "client", "ci"],
+            description: "Optional hint pointing Codex at the right subtree.",
+          },
+        },
+        required: ["title", "task"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "check_code_change_status",
+      description: "Look up the current state of a previously-dispatched delegate_code_change by its branchSlug and trackingId. Returns pr_opened / abstained / in_progress / failed / unknown. Use in a later session to follow up on a `pending` dispatch.",
+      parameters: {
+        type: "object",
+        properties: {
+          branchSlug: { type: "string", description: "The branchSlug returned by delegate_code_change" },
+          trackingId: { type: "string", description: "The trackingId returned by delegate_code_change" },
+        },
+        required: ["branchSlug", "trackingId"],
+      },
+    },
+  },
+
   // ── AI Item Generation ──
   {
     type: "function",
@@ -2264,15 +2498,48 @@ You can invent brand-new weapons using the full AI pipeline: \`generate_item\` c
 - \`spawn_drop\` is for special moments, not routine — max a few per session
 - Reactor events should feel curated, not spammy — quality over quantity
 
-## Things You Cannot Change (flag to admin)
-Some player requests require Java server code changes that are outside your control. When you see feedback asking for these, acknowledge the request in your summary so the admin knows, but do not attempt to implement them:
-- Chat commands (\`@fm\`, \`@go\`, etc.) — these are hardcoded in Java
-- Inventory slot limits or stack sizes — client/server code limitation
-- Party quest level caps or party EXP range — server code
-- Henesys return scroll behavior — coded in item handler
-- Any client-side visual changes (UI, effects, animations)
+## Code-Level Changes — Delegating to Codex
+Some player requests require changes to the codebase itself (Java server, dashboard TypeScript, launcher, CI) that no other GM tool can address. For those, you can delegate to an external coding agent (OpenAI Codex) running in a sandboxed GitHub Actions workflow via \`delegate_code_change\`.
 
-When you encounter repeated requests for these, include them in your session summary so the admin can prioritize the code changes.
+### When to use \`delegate_code_change\`
+- A hardcoded value in Java needs to change (e.g. inventory slot cap, party EXP range, command level gate)
+- A server handler has a bug a player keeps reporting
+- A missing dashboard API endpoint is blocking another GM capability
+- A workflow file needs a small tweak (not the deploy pipeline itself)
+
+### When NOT to use it
+- Any change you can make via existing tools (\`update_config\`, \`update_rates\`, \`create_event\`, \`create_custom_npc\`, \`batch_update_mobs\`, etc.) — ALWAYS prefer the targeted tool
+- Data-only changes (drops, shops, spawns, reactors, events)
+- Cosmetic / client-side visuals (these need WZ + client patches, not code)
+- Speculative refactors — Codex is not for "cleanup"
+
+### How it works
+1. You call \`delegate_code_change\` with a clear \`title\` + \`task\` (and optionally \`area\` and \`acceptance_criteria\`).
+2. The dashboard dispatches a GitHub Actions workflow; Codex works on a fresh checkout in GitHub's sandbox.
+3. Codex either pushes a branch and opens a PR labeled \`ai-gm\` (reviewed and merged by a human — never auto-merged) OR prints \`CANNOT_FIX: <reason>\`, which causes the workflow to open an issue labeled \`gm-abstained\` instead of a PR.
+4. The tool polls for up to ~90s and returns the outcome. If still pending, it returns a \`branchSlug\` + \`trackingId\` you can follow up on later with \`check_code_change_status\`.
+
+### Hard limits
+- **1 dispatch per GM session.** The loop will refuse a second call.
+- **3 dispatches per rolling 24h.** Over that, the tool returns \`rate_limited\`.
+- PRs are never auto-merged. You cannot force or shortcut review.
+
+### Abstain is a valid outcome
+If Codex returns \`abstained\`, do NOT retry the same task in the same session or the next cron run. Treat it as a clear signal that the change needs a human design call. Surface the abstain reason in your session summary.
+
+### Prompt quality matters
+Codex performance tracks prompt specificity. A vague task like "fix the bug" wastes a dispatch. Write the task like a ticket: what's broken, what should change, where to look.
+Example good task: "The @fm command is blocked below level 20 in server/src/main/java/scripting/event/EventCommands.java. Raise the cap to 10 so new players can use it. Compile with \`./mvnw -f server/pom.xml compile\` to verify."
+Example bad task: "players complain about @fm, please fix"
+
+## Things You Cannot Change Even With Code Delegation (flag to admin)
+Some things are out of scope for \`delegate_code_change\` because they need human judgment, client work, or external infra:
+- Client-side visual changes (UI, effects, animations) — require WZ + client patches, not a PR
+- Deployment pipeline secrets or infra changes (Fly, R2, Cloudflare)
+- Major architectural refactors or multi-PR initiatives
+- Anything that would modify \`deploy.yml\`, \`CLAUDE.md\`, or production credentials
+
+When you encounter requests in these categories, acknowledge them in your session summary so the admin can prioritize them manually.
 
 ## Communication
 - Be direct and concise
@@ -2314,7 +2581,8 @@ async function persistSessionEnd(session: GMSession): Promise<void> {
 
 const CATEGORY_EMOJI: Record<string, string> = {
   rates: "\u2728", mobs: "\uD83D\uDC7E", drops: "\uD83C\uDF81", spawns: "\uD83D\uDDFA\uFE0F",
-  shops: "\uD83D\uDED2", events: "\uD83C\uDF89", config: "\u2699\uFE0F", reactors: "\uD83D\uDCA5", other: "\uD83D\uDD27",
+  shops: "\uD83D\uDED2", events: "\uD83C\uDF89", config: "\u2699\uFE0F", reactors: "\uD83D\uDCA5",
+  code: "\uD83E\uDDE0", other: "\uD83D\uDD27",
 };
 
 function summarizeToolCall(name: string, input: Record<string, any>): string {
@@ -2370,6 +2638,8 @@ function summarizeToolCall(name: string, input: Record<string, any>): string {
         return `item ${input.itemId} x${input.quantity || 1} to char ${input.characterId}`;
       case "update_character":
         return `char ${input.characterId}: ${Object.keys(input.changes || {}).join(", ")}`;
+      case "delegate_code_change":
+        return `"${String(input.title || "").slice(0, 80)}"${input.area ? ` (${input.area})` : ""}`;
       default:
         return "";
     }
@@ -2522,13 +2792,35 @@ export async function runGameMaster(
           tool: { id: tc.id, name: toolName, input: args },
         });
 
+        // Per-session cap: at most one delegate_code_change per GM session
+        let preempted: string | null = null;
+        if (toolName === "delegate_code_change") {
+          const priorDelegations = session.log.filter(
+            (e): e is Extract<GMLogEntry, { type: "tool_call" }> =>
+              e.type === "tool_call" && e.tool.name === "delegate_code_change" && e.tool.id !== tc.id
+          ).length;
+          if (priorDelegations >= 1) {
+            preempted = JSON.stringify({
+              status: "rate_limited",
+              error: "delegate_code_change is limited to 1 dispatch per session. Review the prior dispatch's outcome before retrying in a future session.",
+            });
+          } else {
+            // Inject session id so the handler can build a stable branch slug / tracking id
+            args.__gm_session_id = session.id;
+          }
+        }
+
         let resultStr: string;
-        try {
-          const handler = toolHandlers[toolName];
-          if (!handler) throw new Error(`Unknown tool: ${toolName}`);
-          resultStr = await handler(args);
-        } catch (err: any) {
-          resultStr = JSON.stringify({ error: err.message });
+        if (preempted) {
+          resultStr = preempted;
+        } else {
+          try {
+            const handler = toolHandlers[toolName];
+            if (!handler) throw new Error(`Unknown tool: ${toolName}`);
+            resultStr = await handler(args);
+          } catch (err: any) {
+            resultStr = JSON.stringify({ error: err.message });
+          }
         }
 
         // Parse result for logging
