@@ -33,6 +33,18 @@ permissions:
   pull-requests: write
   issues: write
 
+# All `inputs.*` flow into steps via env vars, never inlined into shell with
+# ${{ }}. Free-form user-supplied text can contain bash-special chars — direct
+# interpolation breaks the script.
+env:
+  IN_TITLE:       ${{ inputs.title }}
+  IN_TASK:        ${{ inputs.task }}
+  IN_CRITERIA:    ${{ inputs.criteria }}
+  IN_AREA:        ${{ inputs.area }}
+  IN_BRANCH:      ${{ inputs.branch_slug }}
+  IN_TRACKING_ID: ${{ inputs.tracking_id }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
 jobs:
   codex:
     runs-on: ubuntu-latest
@@ -48,7 +60,7 @@ jobs:
         run: |
           git config user.name "augur-gm[bot]"
           git config user.email "augur-gm@users.noreply.github.com"
-          git checkout -b "${{ inputs.branch_slug }}"
+          git checkout -b "$IN_BRANCH"
 
       - name: Install Codex CLI
         run: npm install -g @openai/codex
@@ -71,20 +83,22 @@ jobs:
       - name: Build Codex prompt
         run: |
           mkdir -p /tmp/codex
-          cat > /tmp/codex/prompt.txt <<'PROMPT_EOF'
+          # Use the quoted heredoc terminator ('EOF') so shell does not expand
+          # the body, then inject env-var values with envsubst-like sentinels.
+          cat > /tmp/codex/prompt.txt <<PROMPT_EOF
           You are acting on behalf of the AugurMS AI Game Master. This is a real private-server codebase; treat it with care.
 
-          Tracking ID: ${{ inputs.tracking_id }}
-          Area hint: ${{ inputs.area }}
+          Tracking ID: ${IN_TRACKING_ID}
+          Area hint: ${IN_AREA}
 
           TITLE:
-          ${{ inputs.title }}
+          ${IN_TITLE}
 
           TASK:
-          ${{ inputs.task }}
+          ${IN_TASK}
 
           ACCEPTANCE CRITERIA:
-          ${{ inputs.criteria }}
+          ${IN_CRITERIA}
 
           HARD RULES:
           1. Make the minimal, correct change. Do not add unrelated refactors, tests, comments, or cleanups.
@@ -93,7 +107,7 @@ jobs:
                 CANNOT_FIX: <one-sentence reason>
              The surrounding workflow detects this and opens an abstain issue instead of a PR. Abstaining is a perfectly valid outcome.
           4. Never touch: .github/workflows/deploy.yml, CLAUDE.md, any .env*, any file containing production secrets.
-          5. If you change Java in `server/`, run a quick sanity compile: `cd server && ./mvnw compile -q` (OpenJDK 21). If you change `dashboard/`, try `cd dashboard && npm run build` at the end. Skip verification if it would blow the time budget.
+          5. If you change Java in \`server/\`, run a quick sanity compile: \`cd server && ./mvnw compile -q\` (OpenJDK 21). If you change \`dashboard/\`, try \`cd dashboard && npm run build\` at the end. Skip verification if it would blow the time budget.
           6. The PR will be reviewed by a human. Do not attempt to self-merge or push to main.
           PROMPT_EOF
 
@@ -101,10 +115,12 @@ jobs:
         id: codex
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        # GitHub-hosted runners don't permit bwrap network-namespace setup
+        # used by Codex's default workspace-write sandbox (RTM_NEWADDR EPERM).
+        # The runner is itself ephemeral, so bypassing Codex's sandbox is safe.
         run: |
           cat /tmp/codex/prompt.txt | codex exec \
-            --full-auto \
-            --sandbox workspace-write \
+            --dangerously-bypass-approvals-and-sandbox \
             --output-last-message /tmp/codex/output.txt \
             -
 
@@ -127,23 +143,26 @@ jobs:
         if: steps.check.outputs.abstained == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_PR_TOKEN }}
+          ABSTAIN_REASON: ${{ steps.check.outputs.reason }}
         run: |
           body_file=$(mktemp)
-          cat > "$body_file" <<EOF
-          **Codex declined to make this change.**
-
-          Tracking ID: \`${{ inputs.tracking_id }}\`
-          Branch requested: \`${{ inputs.branch_slug }}\`
-          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          **Task:**
-          ${{ inputs.task }}
-
-          **Reason:**
-          ${{ steps.check.outputs.reason }}
-          EOF
+          {
+            echo "**Codex declined to make this change.**"
+            echo ""
+            echo "Tracking ID: \`${IN_TRACKING_ID}\`"
+            echo "Branch requested: \`${IN_BRANCH}\`"
+            echo "Workflow run: ${RUN_URL}"
+            echo ""
+            echo "**Task:**"
+            echo ""
+            printf '%s\n' "$IN_TASK"
+            echo ""
+            echo "**Reason:**"
+            echo ""
+            printf '%s\n' "$ABSTAIN_REASON"
+          } > "$body_file"
           gh issue create \
-            --title "[gm-abstain] ${{ inputs.title }}" \
+            --title "[gm-abstain] ${IN_TITLE}" \
             --label "gm-abstained,ai-gm" \
             --body-file "$body_file"
 
@@ -154,48 +173,45 @@ jobs:
         run: |
           if [ -z "$(git status --porcelain)" ]; then
             body_file=$(mktemp)
-            cat > "$body_file" <<EOF
-          **Codex ran but produced no changes.**
-
-          Tracking ID: \`${{ inputs.tracking_id }}\`
-          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          **Task:**
-          ${{ inputs.task }}
-
-          This may mean the change was not understood, the existing code already satisfies the task, or Codex chose to abstain silently. Treat as an abstain.
-          EOF
+            {
+              echo "**Codex ran but produced no changes.**"
+              echo ""
+              echo "Tracking ID: \`${IN_TRACKING_ID}\`"
+              echo "Workflow run: ${RUN_URL}"
+              echo ""
+              echo "**Task:**"
+              echo ""
+              printf '%s\n' "$IN_TASK"
+              echo ""
+              echo "This may mean the change was not understood, the existing code already satisfies the task, or Codex chose to abstain silently. Treat as an abstain."
+            } > "$body_file"
             gh issue create \
-              --title "[gm-abstain] ${{ inputs.title }} (no-op)" \
+              --title "[gm-abstain] ${IN_TITLE} (no-op)" \
               --label "gm-abstained,ai-gm" \
               --body-file "$body_file"
             exit 0
           fi
 
           git add -A
-          git commit -m "${{ inputs.title }}
+          git commit -m "${IN_TITLE}
 
-          Tracking: ${{ inputs.tracking_id }}"
-          git push origin "${{ inputs.branch_slug }}"
+          Tracking: ${IN_TRACKING_ID}"
+          git push origin "$IN_BRANCH"
 
           body_file=$(mktemp)
           {
             echo "**This PR was opened by the AugurMS AI Game Master via \`delegate_code_change\`.**"
             echo ""
-            echo "Tracking ID: \`${{ inputs.tracking_id }}\`"
-            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "Tracking ID: \`${IN_TRACKING_ID}\`"
+            echo "Workflow run: ${RUN_URL}"
             echo ""
             echo "### Task"
             echo ""
-            cat <<'TASK_EOF'
-          ${{ inputs.task }}
-          TASK_EOF
+            printf '%s\n' "$IN_TASK"
             echo ""
             echo "### Acceptance criteria"
             echo ""
-            cat <<'CRIT_EOF'
-          ${{ inputs.criteria }}
-          CRIT_EOF
+            printf '%s\n' "$IN_CRITERIA"
             echo ""
             echo "### Codex output (truncated)"
             echo ""
@@ -210,7 +226,7 @@ jobs:
 
           gh pr create \
             --base main \
-            --head "${{ inputs.branch_slug }}" \
-            --title "[ai-gm] ${{ inputs.title }}" \
+            --head "$IN_BRANCH" \
+            --title "[ai-gm] ${IN_TITLE}" \
             --label "ai-gm" \
             --body-file "$body_file"
