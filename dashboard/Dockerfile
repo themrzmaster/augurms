@@ -33,10 +33,13 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
 # Runtime libs for the compiled native modules (no headers needed here).
+# xvfb + libgl1-mesa-dri + libglx-mesa0 give headless-gl a virtual X display
+# and the Mesa DRI software renderer it needs to create a WebGL context.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libjpeg62-turbo libgif7 \
       librsvg2-2 libpixman-1-0 \
       libxi6 libgl1 libglu1-mesa libxext6 \
+      libgl1-mesa-dri libglx-mesa0 libosmesa6 xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 1001 nodejs \
@@ -50,4 +53,6 @@ COPY --from=builder /app/launcher-manifest.json ./launcher-manifest.json
 USER nextjs
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+# xvfb-run wraps node with a virtual X display so headless-gl can create a
+# WebGL context inside the container. `-a` picks a free display number.
+CMD ["xvfb-run", "-a", "--server-args=-screen 0 1280x1024x24", "node", "server.js"]
