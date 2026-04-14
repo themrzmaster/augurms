@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { getGeneratedItem, updateGeneration } from "@/lib/gm/generated-items";
 import { query } from "@/lib/db";
 
@@ -9,8 +11,10 @@ export const maxDuration = 600;
 
 const PUBLISH_POLL_INTERVAL_MS = 3000;
 const PUBLISH_POLL_TIMEOUT_MS = 8 * 60_000;
+const STATUS_FILE = join(process.env.COSMIC_ROOT || "/cosmic", "publish-status.json");
 
 interface PublishStatus {
+  id?: string;
   status: "idle" | "running" | "done" | "error";
   step?: string;
   error?: string;
@@ -20,16 +24,31 @@ interface PublishStatus {
   actions?: string[];
 }
 
-async function waitForPublish(baseUrl: string, authHeaders: Record<string, string>): Promise<PublishStatus> {
+/**
+ * Poll the publish job by reading `/cosmic/publish-status.json` directly from
+ * the shared volume. Earlier versions fetched the publish route over HTTP,
+ * but a single ECONNRESET (the route is long-lived and self-fetches can race
+ * with the game-server restart triggered mid-publish) would kill the loop and
+ * leave `gm_generated_items.status` stuck on `ready` even after the job
+ * finished. Filesystem reads can't ECONNRESET.
+ *
+ * `jobId` is matched against `status.id` so a stale `done` file from the
+ * previous publish can't short-circuit the wait for the *current* run.
+ */
+async function waitForPublish(jobId: string): Promise<PublishStatus> {
   const deadline = Date.now() + PUBLISH_POLL_TIMEOUT_MS;
   let last: PublishStatus = { status: "idle" };
   while (Date.now() < deadline) {
-    const res = await fetch(new URL("/api/admin/items/publish", baseUrl).toString(), {
-      headers: authHeaders,
-    });
-    if (res.ok) {
-      last = (await res.json()) as PublishStatus;
-      if (last.status === "done" || last.status === "error") return last;
+    try {
+      if (existsSync(STATUS_FILE)) {
+        const parsed = JSON.parse(readFileSync(STATUS_FILE, "utf-8")) as PublishStatus;
+        if (parsed.id === jobId) {
+          last = parsed;
+          if (last.status === "done" || last.status === "error") return last;
+        }
+      }
+    } catch {
+      // Status file race (mid-write) — ignore and retry.
     }
     await new Promise((r) => setTimeout(r, PUBLISH_POLL_INTERVAL_MS));
   }
@@ -113,11 +132,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     await updateGeneration(genId, { error: `publish kickoff failed: ${text}` });
     return NextResponse.json({ error: `Publish failed to start: ${text}` }, { status: 502 });
   }
+  const { id: jobId } = (await pub.json()) as { id: string };
 
   // The publish route is fire-and-forget — poll publish-status.json until the
   // background job actually completes, so callers (esp. the GM tool) get a
   // truthful success/failure signal instead of "started" masquerading as "done".
-  const finalStatus = await waitForPublish(request.url, authHeaders);
+  const finalStatus = await waitForPublish(jobId);
   if (finalStatus.status === "error") {
     const errMsg = finalStatus.error ?? "publish job reported error with no message";
     await updateGeneration(genId, { error: errMsg });
