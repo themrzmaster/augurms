@@ -31,8 +31,12 @@ export async function GET(request: NextRequest) {
   const orderBy = validSorts[sort] || validSorts.level;
 
   try {
-    // Build WHERE clause
-    const conditions = ["c.name != 'admin'"]; // Exclude admin
+    // Build WHERE clause: hide banned accounts and GM characters
+    const conditions = [
+      "c.name != 'admin'",
+      "a.banned = 0",
+      "c.gm = 0",
+    ];
     const params: any[] = [];
 
     if (job) {
@@ -68,6 +72,7 @@ export async function GET(request: NextRequest) {
       `SELECT c.id, c.name, c.level, c.exp, c.job, c.fame, c.meso,
               g.name AS guild, c.skincolor, c.hair, c.face, c.gender
        FROM characters c
+       JOIN accounts a ON a.id = c.accountid
        LEFT JOIN guilds g ON c.guildid = g.guildid AND c.guildid > 0
        WHERE ${conditions.join(" AND ")}
        ORDER BY ${orderBy}
