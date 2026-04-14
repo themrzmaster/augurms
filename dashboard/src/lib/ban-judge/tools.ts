@@ -165,9 +165,7 @@ export const toolHandlers: Record<string, (args: any) => Promise<string>> = {
          agg.unique_maps,
          agg.total_points,
          agg.first_flagged,
-         agg.last_flagged,
-         a.banned as already_banned,
-         a.banreason
+         agg.last_flagged
        FROM (
          SELECT
            account_id,
@@ -185,7 +183,16 @@ export const toolHandlers: Record<string, (args: any) => Promise<string>> = {
          GROUP BY account_id
          HAVING flag_count >= ?
        ) agg
-       LEFT JOIN accounts a ON a.id = agg.account_id
+       JOIN accounts a ON a.id = agg.account_id
+       WHERE a.banned = 0
+         AND NOT EXISTS (
+           SELECT 1 FROM ban_verdicts bv
+           WHERE bv.account_id = agg.account_id
+             AND bv.verdict = 'ban'
+             AND bv.applied = 0
+             AND bv.dismissed_at IS NULL
+             AND bv.overturned_at IS NULL
+         )
        ORDER BY agg.flag_count DESC, agg.violation_type_count DESC
        LIMIT ${lim}`,
       [days, minF]
