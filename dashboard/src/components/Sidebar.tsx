@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { href: "/drops", label: "Drops", icon: "💎" },
   { href: "/events", label: "Events", icon: "🎉" },
   { href: "/cheats", label: "Cheat Flags", icon: "🚩" },
+  { href: "/ban-judge", label: "Ban Judge", icon: "⚖️" },
   { href: "/worldmap", label: "World Map", icon: "🌏" },
   { href: "/gamemaster", label: "Game Master", icon: "🧠" },
   { href: "/augur", label: "Augur NPC", icon: "🔮" },
