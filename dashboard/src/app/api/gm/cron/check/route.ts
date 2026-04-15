@@ -31,20 +31,39 @@ export async function GET() {
 
     // It's time to run — trigger the cron endpoint
     const BASE = process.env.COSMIC_DASHBOARD_URL || "http://localhost:3000";
-    const res = await fetch(`${BASE}/api/gm/cron`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trigger: "scheduled" }),
-    });
+    let result: any = null;
+    let fetchError: string | null = null;
+    try {
+      const res = await fetch(`${BASE}/api/gm/cron`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trigger: "scheduled" }),
+      });
+      result = await res.json();
+      if (!res.ok) fetchError = `inner cron returned ${res.status}`;
+    } catch (e: any) {
+      fetchError = `fetch failed: ${e.message}`;
+    }
 
-    const result = await res.json();
+    // Only advance the full schedule interval when a session actually started.
+    // Otherwise back off 15 min so the next cron tick retries — a single timeout
+    // or 409/503 shouldn't silently skip 12h of scheduled runs.
+    const sessionStarted = Boolean(result?.sessionId);
+    if (sessionStarted) {
+      await execute(
+        "UPDATE gm_schedule SET last_run = NOW(), next_run = DATE_ADD(NOW(), INTERVAL interval_hours HOUR) WHERE id = 1"
+      );
+      return NextResponse.json({ action: "ran", result });
+    }
 
-    // Update schedule: set last_run and next_run
     await execute(
-      "UPDATE gm_schedule SET last_run = NOW(), next_run = DATE_ADD(NOW(), INTERVAL interval_hours HOUR) WHERE id = 1"
+      "UPDATE gm_schedule SET next_run = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE id = 1"
     );
-
-    return NextResponse.json({ action: "ran", result });
+    return NextResponse.json({
+      action: "retry",
+      reason: fetchError || result?.error || "no session started",
+      result,
+    });
   } catch (err: any) {
     return NextResponse.json({ action: "error", error: err.message }, { status: 500 });
   }
