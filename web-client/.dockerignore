@@ -1,0 +1,7 @@
+.git
+.gitignore
+.DS_Store
+._*
+sync-from-wasm.sh
+README.md
+fly.toml

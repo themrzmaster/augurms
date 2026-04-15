@@ -1,0 +1,3 @@
+[submodule "web-client/vendor/maplestory-wasm"]
+	path = web-client/vendor/maplestory-wasm
+	url = https://github.com/themrzmaster/maplestory-wasm.git

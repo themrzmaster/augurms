@@ -1,0 +1,8 @@
+{
+  "MapleStoryServerIp": "213.188.212.103",
+  "MapleStoryServerPort": 8484,
+  "ProxyIP": "play.augurms.com",
+  "ProxyPort": 443,
+  "AssetsServerProtocol": "wss",
+  "NxBaseUrl": "https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/nx"
+}

@@ -15,6 +15,10 @@ on:
         description: 'Build launcher'
         type: boolean
         default: false
+      web:
+        description: 'Deploy web client (browser WASM)'
+        type: boolean
+        default: false
 
 jobs:
   deploy-dashboard:
@@ -79,6 +83,21 @@ jobs:
 
       - name: Deploy game server
         run: flyctl deploy ./server --remote-only --build-arg CACHE_BUST=${{ github.sha }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-web:
+    if: ${{ inputs.web }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive # pulls vendor/maplestory-wasm at the pinned SHA
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy web client
+        run: flyctl deploy ./web-client --remote-only --ha=false
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
