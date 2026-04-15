@@ -151,18 +151,29 @@ export async function POST(request: NextRequest) {
     }
 
     // 9. Trigger full publish (client WZ + R2 + manifest bump + server restart)
+    // Forward whichever auth the incoming request carried (browser cookie OR
+    // GM x-gm-secret) to the nested publish call — otherwise middleware 401s
+    // our own self-fetch and the publish silently never runs.
     let publishNote = "Server files written locally.";
     try {
+      const cookie = request.headers.get("cookie") ?? "";
+      const gmSecret = request.headers.get("x-gm-secret") ?? "";
+      const authHeaders: Record<string, string> = {};
+      if (cookie) authHeaders.cookie = cookie;
+      if (gmSecret) authHeaders["x-gm-secret"] = gmSecret;
+
       const publishRes = await fetch(
         new URL("/api/admin/reactors/publish", request.url).toString(),
-        { method: "POST" }
+        { method: "POST", headers: authHeaders }
       );
       const publishData = await publishRes.json();
       if (publishData.status === "started") {
         publishNote = "Full publish started (client WZ → R2 → manifest bump → server restart). Takes ~1-2 minutes.";
+      } else {
+        publishNote = `Auto-publish failed: ${publishData.error || JSON.stringify(publishData)}. Use 'Publish to R2' from the dashboard Reactors page.`;
       }
-    } catch {
-      publishNote = "Auto-publish failed. Use 'Publish to R2' from the dashboard Reactors page.";
+    } catch (err: any) {
+      publishNote = `Auto-publish failed: ${err.message || err}. Use 'Publish to R2' from the dashboard Reactors page.`;
     }
 
     return NextResponse.json({
