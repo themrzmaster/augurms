@@ -24,6 +24,7 @@ COPY --from=builder /wasm/build/JourneyClient.js   /app/build/JourneyClient.js
 COPY --from=builder /wasm/build/JourneyClient.wasm /app/build/JourneyClient.wasm
 COPY --from=builder /wasm/web/index.html           /app/web/index.html
 COPY --from=builder /wasm/web/prefetcher.js        /app/web/prefetcher.js
+COPY --from=builder /wasm/web/logo.png             /app/web/logo.png
 
 ENV STATIC_ROOT=/app
 ENV PORT=8080
