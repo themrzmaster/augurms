@@ -18,7 +18,7 @@ function getTimeAgo(dateStr: string): string {
 export default function LandingPage() {
   const [status, setStatus] = useState<"online" | "offline" | "loading">("loading");
   const [rates, setRates] = useState({ exp: "1x", drop: "1x", meso: "1x" });
-  const [installTab, setInstallTab] = useState<"launcher" | "manual">("launcher");
+  const [installTab, setInstallTab] = useState<"launcher" | "manual" | "browser">("launcher");
   const [augurLog, setAugurLog] = useState<Array<{ type: string; text: string; date: string }>>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [gmModel, setGmModel] = useState("");
@@ -243,6 +243,17 @@ export default function LandingPage() {
           >
             Download Client
           </a>
+          <a
+            href="https://play.augurms.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group inline-flex items-center gap-2 rounded-xl border border-accent-purple/40 bg-accent-purple/[0.06] px-6 py-3.5 text-base font-medium text-accent-purple transition hover:bg-accent-purple/[0.12] hover:shadow-[0_0_24px_rgba(167,139,250,0.25)]"
+          >
+            Play in Browser
+            <span className="rounded-full bg-accent-purple/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+              Beta
+            </span>
+          </a>
         </div>
 
         {/* Features */}
@@ -449,36 +460,119 @@ export default function LandingPage() {
 
         {/* Download section */}
         <div id="download" className="mt-20 w-full max-w-3xl scroll-mt-20">
-          <h2 className="mb-2 text-2xl font-bold">Download &amp; Play</h2>
+          <h2 className="mb-2 text-2xl font-bold">Play AugurMS</h2>
           <p className="mb-8 text-sm text-text-secondary">
-            Two ways to get started: use our <strong className="text-text-primary">Launcher</strong> (recommended) for automatic updates, or install manually.
+            Three ways to jump in: the <strong className="text-text-primary">Launcher</strong> (recommended) for auto-updates, <strong className="text-text-primary">Manual</strong> install, or play directly in your <strong className="text-text-primary">Browser</strong> — no download.
           </p>
 
           {/* Tab toggle */}
-          <div className="mb-6 flex rounded-lg border border-border bg-bg-card/50 p-1">
+          <div className="mb-6 flex flex-wrap gap-1 rounded-lg border border-border bg-bg-card/50 p-1">
             <button
               onClick={() => setInstallTab("launcher")}
-              className={`flex-1 rounded-md px-4 py-2.5 text-sm font-semibold transition ${
+              className={`min-w-[140px] flex-1 rounded-md px-3 py-2.5 text-sm font-semibold transition ${
                 installTab === "launcher"
                   ? "bg-accent-gold/10 text-accent-gold"
                   : "text-text-muted hover:text-text-secondary"
               }`}
             >
-              Launcher (Recommended)
+              Launcher
             </button>
             <button
               onClick={() => setInstallTab("manual")}
-              className={`flex-1 rounded-md px-4 py-2.5 text-sm font-semibold transition ${
+              className={`min-w-[140px] flex-1 rounded-md px-3 py-2.5 text-sm font-semibold transition ${
                 installTab === "manual"
                   ? "bg-accent-gold/10 text-accent-gold"
                   : "text-text-muted hover:text-text-secondary"
               }`}
             >
-              Manual Install
+              Manual
+            </button>
+            <button
+              onClick={() => setInstallTab("browser")}
+              className={`min-w-[140px] flex-1 rounded-md px-3 py-2.5 text-sm font-semibold transition ${
+                installTab === "browser"
+                  ? "bg-accent-purple/10 text-accent-purple"
+                  : "text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              Browser
+              <span className="ml-2 rounded-full bg-accent-purple/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-purple">
+                Beta
+              </span>
             </button>
           </div>
 
-          {installTab === "launcher" ? (
+          {installTab === "browser" ? (
+            <div className="space-y-4">
+              {/* Browser hero */}
+              <div className="rounded-xl border border-accent-purple/30 bg-gradient-to-br from-accent-purple/[0.08] to-accent-blue/[0.05] p-6 backdrop-blur-sm">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="text-3xl">{"\uD83C\uDF10"}</div>
+                  <div>
+                    <h3 className="font-bold text-text-primary">
+                      Instant play, zero install
+                    </h3>
+                    <p className="text-xs text-text-secondary">
+                      The full v83 client, running as WebAssembly in your browser. Log in with any AugurMS account.
+                    </p>
+                  </div>
+                </div>
+                <a
+                  href="https://play.augurms.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg bg-accent-purple px-5 py-2.5 font-semibold text-bg-primary transition hover:bg-accent-purple/90 hover:shadow-[0_0_20px_rgba(167,139,250,0.35)]"
+                >
+                  Launch Browser Client
+                  <span className="text-sm opacity-70">&rarr;</span>
+                </a>
+                <a
+                  href="/register"
+                  className="ml-3 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-secondary transition hover:border-border-light hover:text-text-primary"
+                >
+                  Need an account?
+                </a>
+              </div>
+
+              {/* What to expect */}
+              <div className="rounded-xl border border-border bg-bg-card/50 p-6 backdrop-blur-sm">
+                <h3 className="mb-3 font-semibold text-text-primary">What to expect</h3>
+                <ul className="space-y-2 text-sm text-text-secondary">
+                  <li className="flex gap-2">
+                    <span className="text-accent-purple">&#9679;</span>
+                    <span>
+                      <strong className="text-text-primary">First load is slow</strong> (~108 MB of assets prefetched before you hit login) so the in-game experience feels native. Later sessions load instantly from browser cache.
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-accent-purple">&#9679;</span>
+                    <span>
+                      <strong className="text-text-primary">Chrome only.</strong> The client uses WebGL + WebAssembly features that only behave reliably in Chrome. Firefox, Safari, Edge, and Brave are blocked; you can opt in at your own risk.
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-accent-purple">&#9679;</span>
+                    <span>
+                      <strong className="text-text-primary">Same world, same account.</strong> Your characters, inventory, and progress are shared with the native client. Jump between them freely.
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-accent-purple">&#9679;</span>
+                    <span>
+                      <strong className="text-text-primary">Desktop recommended.</strong> Mobile browsers will render the page but input handling is rough right now.
+                    </span>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Beta caveat */}
+              <div className="rounded-xl border border-accent-orange/25 bg-accent-orange/5 p-4">
+                <p className="text-xs leading-relaxed text-text-secondary">
+                  <strong className="text-accent-orange">Beta:</strong> The browser client is actively being tuned. Expect occasional freezes, visual glitches, or reconnects. For the smoothest experience — especially during events or long sessions — use the <strong>Launcher</strong>.
+                </p>
+              </div>
+            </div>
+          ) : installTab === "launcher" ? (
             <div className="space-y-4">
               {/* Launcher Step 1 */}
               <div className="rounded-xl border border-border bg-bg-card/50 p-6 backdrop-blur-sm">
