@@ -16,6 +16,7 @@ const PUBLIC_PATHS = [
   "/worldmap",
   "/api/worldmap/",
   "/api/gm/actions/map",
+  "/api/gm/cron/check", // polled by external cron; gates itself on gm_schedule.next_run
   "/api/ban-judge/cron/check", // polled by external cron; gates itself on ban_judge_schedule
   "/api/npc/", // handles its own x-npc-secret auth at the route layer
   "/rankings",
