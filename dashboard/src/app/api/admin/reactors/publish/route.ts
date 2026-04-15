@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { query, execute } from "@/lib/db";
 import { uploadToR2, uploadFileToR2, isR2Configured } from "@/lib/r2";
+import { dispatchWzToNx } from "@/lib/wz-to-nx";
 import { parseWzFile, saveWzFile, addReactorToWz } from "@/lib/wz";
 import { generateReactorFrames } from "@/lib/wz/reactor-animator";
 import { generateReactorXml, generateReactorScript } from "@/lib/wz/reactor-builder";
@@ -253,6 +254,13 @@ async function runPublishJob() {
           update("Uploaded Reactor.wz", "Uploaded patched Reactor.wz to R2");
         } else {
           update("Upload warning", `Reactor.wz upload failed: ${reactorUpload.error}`);
+        }
+
+        // Trigger WZ→NX conversion for the browser client
+        const changedWz = Object.keys(manifestUpdates).filter((n) => n.endsWith(".wz"));
+        if (changedWz.length > 0) {
+          dispatchWzToNx(changedWz).catch(() => {});
+          update("Triggering WZ→NX conversion", `Dispatched wz-to-nx for: ${changedWz.join(", ")}`);
         }
 
         // Bump launcher manifest

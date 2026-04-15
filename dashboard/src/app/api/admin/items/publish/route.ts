@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { uploadToR2, uploadFileToR2, isR2Configured } from "@/lib/r2";
+import { dispatchWzToNx } from "@/lib/wz-to-nx";
 import { restartGameServer } from "@/lib/fly-restart";
 import {
   parseWzFile,
@@ -583,6 +584,14 @@ async function runPublishJob(jobId: string) {
         update("Uploaded String.wz", "Uploaded patched String.wz to R2");
       } else {
         update("Upload warning", `Warning: String.wz upload failed: ${strUpload.error}`);
+      }
+
+      // 9b.5. Trigger WZ→NX conversion for the browser client at play.augurms.com.
+      // Fire-and-forget; the workflow coalesces rapid successive dispatches.
+      const changedWz = Object.keys(manifestUpdates).filter((n) => n.endsWith(".wz"));
+      if (changedWz.length > 0) {
+        update("Triggering WZ→NX conversion", `Dispatching wz-to-nx for: ${changedWz.join(", ")}`);
+        dispatchWzToNx(changedWz).catch(() => {});
       }
 
       // 9c. Update launcher manifest (write directly to volume, no self-fetch)

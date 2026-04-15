@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { uploadFileToR2, isR2Configured } from "@/lib/r2";
+import { dispatchWzToNx } from "@/lib/wz-to-nx";
 import { parseWzFile, saveWzFile, addNpcToStringWz } from "@/lib/wz/patcher";
 import { addNpcToWz, generateNpcXml, processNpcSprite } from "@/lib/wz/npc-builder";
 import { restartGameServer } from "@/lib/fly-restart";
@@ -79,6 +80,10 @@ export async function POST() {
     const stringUpload = await uploadFileToR2("String.wz", patchedStringPath);
     if (!stringUpload.success) throw new Error(`String.wz upload failed: ${stringUpload.error}`);
     actions.push("Uploaded patched String.wz to R2");
+
+    // 3.5. Trigger WZ→NX conversion for the browser client
+    dispatchWzToNx(["Npc.wz", "String.wz"]).catch(() => {});
+    actions.push("Dispatched wz-to-nx for Npc.wz, String.wz");
 
     // 4. Write server XML
     const serverRoot = process.env.WZ_ROOT || "/cosmic/wz";

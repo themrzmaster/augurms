@@ -1,0 +1,140 @@
+name: WZ → NX conversion
+
+# Triggered after publish endpoints upload patched WZ files to R2. Runs the
+# NoLifeWzToNx converter inside Docker on the patched WZ files and uploads the
+# resulting .nx files back to R2 under the `nx/` prefix so the browser client
+# (play.augurms.com) picks them up. `UI.nx` is NEVER regenerated — the v83 UI.wz
+# converts to a UI.nx without login fields (known-broken); the v154+ UI.nx
+# already in R2 must stay as-is.
+
+on:
+  workflow_dispatch:
+    inputs:
+      files:
+        description: 'Space-separated WZ filenames to convert (e.g. "Character.wz String.wz"). Empty = all patchable (Character, String, Npc, Reactor).'
+        type: string
+        required: false
+        default: ''
+  repository_dispatch:
+    types: [wz-to-nx]
+
+concurrency:
+  # Collapse overlapping runs so back-to-back publishes coalesce into one
+  # conversion instead of queueing up 30-minute jobs.
+  group: wz-to-nx
+  cancel-in-progress: false
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout (with submodules for wz-converter)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Resolve input file list
+        id: files
+        env:
+          MANUAL_FILES: ${{ inputs.files }}
+          PAYLOAD_FILES: ${{ toJSON(github.event.client_payload.files) }}
+        run: |
+          set -eu
+          # Priority: repository_dispatch client_payload.files (array) > workflow_dispatch input > default set
+          if [ -n "${PAYLOAD_FILES:-}" ] && [ "${PAYLOAD_FILES}" != "null" ]; then
+            files=$(echo "$PAYLOAD_FILES" | python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin) or []))')
+          else
+            files="${MANUAL_FILES:-}"
+          fi
+          if [ -z "${files// }" ]; then
+            # Default: the WZ files that the publish endpoints actually patch
+            files="Character.wz String.wz Npc.wz Reactor.wz"
+          fi
+          echo "Selected WZ files: $files"
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
+      - name: Install AWS CLI
+        run: |
+          if ! command -v aws >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends awscli
+          fi
+          aws --version
+
+      - name: Download WZ files from R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: 'true'
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          FILES: ${{ steps.files.outputs.files }}
+        run: |
+          set -eu
+          mkdir -p work/wz work/nx
+          for f in $FILES; do
+            echo "::group::Downloading $f"
+            aws s3 cp "s3://$R2_BUCKET/$f" "work/wz/$f" --endpoint-url "$R2_ENDPOINT"
+            echo "::endgroup::"
+          done
+          ls -lh work/wz/
+
+      - name: Build wz-converter image
+        run: |
+          cd web-client/vendor/maplestory-wasm/scripts/wz-converter
+          docker build -t wz-converter:ci .
+
+      - name: Convert WZ → NX
+        run: |
+          set -eu
+          docker run --rm \
+            -v "$PWD/work:/work" \
+            -e MODE=client \
+            wz-converter:ci
+          ls -lh work/nx/
+
+      - name: Upload NX files to R2 (skip UI.nx)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: 'true'
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -eu
+          for nx in work/nx/*.nx; do
+            [ -f "$nx" ] || continue
+            base=$(basename "$nx")
+            if [ "$base" = "UI.nx" ]; then
+              echo "Skipping UI.nx — must stay as v154+ version already in R2"
+              continue
+            fi
+            echo "::group::Uploading $base → nx/$base"
+            aws s3 cp "$nx" "s3://$R2_BUCKET/nx/$base" \
+              --endpoint-url "$R2_ENDPOINT" \
+              --content-type application/octet-stream \
+              --cache-control 'public, max-age=3600'
+            echo "::endgroup::"
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          shopt -s nullglob
+          {
+            echo "### WZ → NX conversion"
+            echo
+            echo "Converted files:"
+            for nx in work/nx/*.nx; do
+              base=$(basename "$nx")
+              size=$(du -h "$nx" | cut -f1)
+              if [ "$base" = "UI.nx" ]; then
+                echo "- ~~$base~~ ($size) — skipped upload"
+              else
+                echo "- $base ($size) → \`nx/$base\`"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
