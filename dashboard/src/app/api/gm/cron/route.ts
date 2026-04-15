@@ -34,6 +34,7 @@ You are performing a scheduled game check.${isWeekend ? " It's the weekend — g
 ## Important
 - If the game looks healthy and no reactive triggers fire, just observe, update goals, and move on. Doing nothing is a valid and often correct choice.
 - Prefer creating events and updating existing NPC shops over adjusting rates or stats.
+- **Occasionally create brand-new content.** The server feels alive when unique things appear over time. When a scheduled check lines up with a themed event, milestone reward, boss incentive, or a tier gap you've noticed across snapshots, consider inventing a one-of-a-kind weapon with \`generate_item\` (then \`publish_generated_item\`) or a themed reactor with \`create_custom_reactor\` instead of reusing vanilla assets. Not every run — these cost real money and take ~60–120s — but don't go weeks without shipping something new. Follow the guardrails in your system prompt (visual-first descriptions, right tier, daily caps).
 - Don't change rates/mob stats unless there's been a sustained problem over multiple snapshots.
 - Consider the current player base: what level are they, what content would be fun for them right now?
 - Always clean up events that have served their purpose — don't let stale spawns, reactors, or global drops accumulate forever.
