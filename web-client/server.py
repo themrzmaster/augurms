@@ -57,12 +57,24 @@ async def handle_ws_proxy(request: web.Request) -> web.WebSocketResponse:
         await ws.close()
         return ws
 
-    if msg.type != WSMsgType.TEXT:
-        log.warning('ws %s: first frame was %s, not text', peer, msg.type)
+    # The WASM client sends the target address as the first frame. The
+    # upstream maplestory-wasm ws_proxy accepts either text or binary —
+    # mirror that so the existing WASM build works unchanged.
+    if msg.type == WSMsgType.TEXT:
+        target_raw = msg.data
+    elif msg.type == WSMsgType.BINARY:
+        try:
+            target_raw = msg.data.decode('utf-8')
+        except UnicodeDecodeError:
+            log.warning('ws %s: first binary frame is not utf-8', peer)
+            await ws.close()
+            return ws
+    else:
+        log.warning('ws %s: first frame was %s, not text/binary', peer, msg.type)
         await ws.close()
         return ws
 
-    target = msg.data.strip()
+    target = target_raw.strip()
     if target not in ALLOWED_TARGETS:
         log.warning('ws %s: target %r rejected (not in allow-list)', peer, target)
         await ws.close()
