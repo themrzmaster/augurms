@@ -1,0 +1,14 @@
+name: Ban Judge Cron
+
+on:
+  schedule:
+    - cron: "*/15 * * * *" # every 15 minutes
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping ban judge cron check
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://augurms.com/api/ban-judge/cron/check)
+          echo "Status: $RESPONSE"
