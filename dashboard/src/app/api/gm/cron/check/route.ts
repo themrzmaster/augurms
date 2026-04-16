@@ -33,12 +33,17 @@ export async function GET() {
     const BASE = process.env.COSMIC_DASHBOARD_URL || "http://localhost:3000";
     let result: any = null;
     let fetchError: string | null = null;
+    let innerOk = false;
     try {
       const res = await fetch(`${BASE}/api/gm/cron`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-gm-secret": process.env.GM_API_SECRET || "",
+        },
         body: JSON.stringify({ trigger: "scheduled" }),
       });
+      innerOk = res.ok;
       result = await res.json();
       if (!res.ok) fetchError = `inner cron returned ${res.status}`;
     } catch (e: any) {
@@ -46,9 +51,9 @@ export async function GET() {
     }
 
     // Only advance the full schedule interval when a session actually started.
-    // Otherwise back off 15 min so the next cron tick retries — a single timeout
-    // or 409/503 shouldn't silently skip 12h of scheduled runs.
-    const sessionStarted = Boolean(result?.sessionId);
+    // 409 "already running" also returns a sessionId (of the existing run), so
+    // require res.ok — otherwise a single 409 would silently skip 12h.
+    const sessionStarted = innerOk && Boolean(result?.sessionId);
     if (sessionStarted) {
       await execute(
         "UPDATE gm_schedule SET last_run = NOW(), next_run = DATE_ADD(NOW(), INTERVAL interval_hours HOUR) WHERE id = 1"
