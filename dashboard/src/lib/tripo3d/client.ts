@@ -90,8 +90,9 @@ export interface CreateTaskParams {
   // Style hints disambiguate thin/flat objects (weapons) so Tripo doesn't
   // back-project the front texture onto a slab.
   style?: string;
-  // Quad topology renders cleaner under arbitrary rotations than triangulated
-  // remeshes — relevant because we sample the model at ±45° / 80° for sprites.
+  // Tripo returns FBX (not GLB) when quad=true because glTF cannot represent
+  // quad meshes. Our downstream headless renderer parses GLB, so leave this
+  // off by default; flip it only if the caller also swaps the loader.
   quad?: boolean;
 }
 
@@ -107,7 +108,7 @@ export async function createImageToModelTask(params: CreateTaskParams): Promise<
     orientation = "align_image",
     textureAlignment = "original_image",
     style,
-    quad = true,
+    quad = false,
   } = params;
 
   if (!imageToken && !imageUrl) {
