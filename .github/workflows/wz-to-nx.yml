@@ -93,7 +93,11 @@ jobs:
             -v "$PWD/work:/work" \
             -e MODE=client \
             wz-converter:ci
-          ls -lh work/nx/
+          # container-convert.sh writes to /work/nxFiles, NOT /work/nx — keep
+          # this listing aligned with the upload step or the workflow silently
+          # "succeeds" while uploading nothing (which is exactly how publishes
+          # were quietly failing to refresh play.augurms.com).
+          ls -lh work/nxFiles/
 
       - name: Upload NX files to R2 (skip UI.nx)
         env:
@@ -105,8 +109,13 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
           set -eu
-          for nx in work/nx/*.nx; do
-            [ -f "$nx" ] || continue
+          shopt -s nullglob
+          nx_files=(work/nxFiles/*.nx)
+          if [ ${#nx_files[@]} -eq 0 ]; then
+            echo "No .nx files produced by converter — failing loudly instead of silently uploading nothing." >&2
+            exit 1
+          fi
+          for nx in "${nx_files[@]}"; do
             base=$(basename "$nx")
             if [ "$base" = "UI.nx" ]; then
               echo "Skipping UI.nx — must stay as v154+ version already in R2"
@@ -128,7 +137,7 @@ jobs:
             echo "### WZ → NX conversion"
             echo
             echo "Converted files:"
-            for nx in work/nx/*.nx; do
+            for nx in work/nxFiles/*.nx; do
               base=$(basename "$nx")
               size=$(du -h "$nx" | cut -f1)
               if [ "$base" = "UI.nx" ]; then

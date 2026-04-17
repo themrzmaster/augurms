@@ -9,6 +9,13 @@
 
 const GH_OWNER = "themrzmaster";
 const GH_REPO = "augurms";
+const GH_WORKFLOW = "wz-to-nx.yml";
+// We deliberately use the workflow_dispatch endpoint, not repository_dispatch
+// (`POST /repos/.../dispatches`). Fine-grained PATs need `Contents: write` for
+// repository_dispatch but only `Actions: write` for workflow_dispatch — and
+// the only scope GH_DISPATCH_TOKEN carries is `actions:write`. The previous
+// `/dispatches` call returned 403 silently, so every publish quietly failed
+// to refresh the NX files for play.augurms.com.
 
 export async function dispatchWzToNx(files: string[]): Promise<void> {
   const token = process.env.GH_DISPATCH_TOKEN;
@@ -21,7 +28,8 @@ export async function dispatchWzToNx(files: string[]): Promise<void> {
     return;
   }
   try {
-    const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/dispatches`, {
+    const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/${GH_WORKFLOW}/dispatches`;
+    const res = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -30,8 +38,10 @@ export async function dispatchWzToNx(files: string[]): Promise<void> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        event_type: "wz-to-nx",
-        client_payload: { files },
+        ref: "main",
+        // Workflow expects a single space-separated string in `inputs.files`
+        // (see .github/workflows/wz-to-nx.yml) — must match that contract.
+        inputs: { files: files.join(" ") },
       }),
     });
     if (res.ok) {
