@@ -65,12 +65,18 @@ function validateBag(
 
 function buildConceptPrompt(description: string, weaponType: string): string {
   const label = WEAPON_TYPES[weaponType]?.label ?? weaponType;
+  // Orthographic dead-on front view: image-to-3D reconstructs symmetric
+  // weapons far better from a flat front than a 3/4 perspective shot —
+  // perspective foreshortening confuses Tripo's symmetry priors and makes
+  // the back face a smeared back-projection of the front texture.
   return `Generate a single ${label} weapon concept sprite: ${description}.
-Style: clean 3D render suitable for a 2D MapleStory-style pixel game,
-weapon fills the frame vertically, pointing up, centered on a plain white background,
-no shadows, no props, no characters, no text or UI, front-quarter three-quarter view
-so length and details read clearly, vivid colors, high detail on the head of the weapon.
-The weapon is the ONLY subject. No scene. No duplicates.`;
+Style: flat orthographic front elevation, dead-on side view of the weapon,
+no perspective, no foreshortening, no rotation. Weapon fills the frame
+vertically, pointing straight up, perfectly centered, mirror-symmetric
+across the vertical axis, on a plain pure white (#FFFFFF) background.
+No shadows, no props, no characters, no text or UI, no ground plane.
+Vivid colors, crisp edges, high detail on the head of the weapon.
+The weapon is the ONLY subject. No scene. No duplicates. No background gradient.`;
 }
 
 interface GenerateBody {

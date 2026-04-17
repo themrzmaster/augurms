@@ -81,6 +81,18 @@ export interface CreateTaskParams {
   faceLimit?: number;
   texture?: boolean;
   pbr?: boolean;
+  // Lock GLB facing to the input image — the headless renderer rotates the
+  // model around Y for swing frames; without this, "front" can land anywhere.
+  orientation?: "default" | "align_image";
+  // "original_image" keeps the concept's colors faithful instead of re-baking
+  // them from the reconstructed mesh (which smears flat regions).
+  textureAlignment?: "original_image" | "geometry";
+  // Style hints disambiguate thin/flat objects (weapons) so Tripo doesn't
+  // back-project the front texture onto a slab.
+  style?: string;
+  // Quad topology renders cleaner under arbitrary rotations than triangulated
+  // remeshes — relevant because we sample the model at ±45° / 80° for sprites.
+  quad?: boolean;
 }
 
 export async function createImageToModelTask(params: CreateTaskParams): Promise<string> {
@@ -92,6 +104,10 @@ export async function createImageToModelTask(params: CreateTaskParams): Promise<
     faceLimit,
     texture = true,
     pbr = true,
+    orientation = "align_image",
+    textureAlignment = "original_image",
+    style,
+    quad = true,
   } = params;
 
   if (!imageToken && !imageUrl) {
@@ -108,6 +124,10 @@ export async function createImageToModelTask(params: CreateTaskParams): Promise<
     file,
     texture,
     pbr,
+    orientation,
+    texture_alignment: textureAlignment,
+    quad,
+    ...(style ? { style } : {}),
     ...(faceLimit !== undefined ? { face_limit: faceLimit } : {}),
   };
 
