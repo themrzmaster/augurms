@@ -129,8 +129,22 @@ async def healthz(_request: web.Request) -> web.Response:
     return web.Response(text='ok')
 
 
+@web.middleware
+async def no_cache_for_build(request: web.Request, handler):
+    """Prevent Cloudflare/browsers from caching the Emscripten JS glue and WASM
+    binary independently. They MUST be loaded as a matching pair — if one is
+    served from cache and the other fresh, Emscripten aborts with
+    'No EM_ASM constant found at address ...'. Sending no-cache on /build/*
+    keeps them in lockstep across deploys.
+    """
+    response = await handler(request)
+    if request.path.startswith('/build/'):
+        response.headers['Cache-Control'] = 'no-cache, must-revalidate'
+    return response
+
+
 def build_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[no_cache_for_build])
     app.router.add_get('/', handle_root)
     app.router.add_get('/healthz', healthz)
     # Static mounts. Route order matters — these only match if the path starts with /web or /build.
