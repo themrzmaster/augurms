@@ -375,6 +375,7 @@ public class CommandsExecutor {
         addCommand("feedback", FeedbackCommand.class);
         addCommand("recalchp", RecalcHpCommand.class);
         addCommand(new String[]{"world", "w"}, WorldChatCommand.class);
+        addCommand("fm", FmCommand.class);
 
         commandsNameDesc.add(levelCommandsCursor);
     }
