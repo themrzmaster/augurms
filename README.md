@@ -1,5 +1,4 @@
 # AugurMS
-# 
 
 A MapleStory v83 private server powered by an AI Game Master. Built on [Cosmic](https://github.com/P0nk/Cosmic) (HeavenMS fork) with a custom dashboard, auto-updating launcher, and an LLM-driven Game Master that manages the world autonomously.
 
@@ -72,5 +71,3 @@ The launcher handles this automatically. For manual setup:
 3. Copy all `.wz` files from `client/cosmic-wz/` into the install directory
 4. Copy `AugurMS.exe` into the install directory
 5. Launch `AugurMS.exe`
-
-- Testing the PR workflow with Claude Code
