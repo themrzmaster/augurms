@@ -22,6 +22,27 @@ export async function POST(
       );
     }
 
+    // Custom reactors (9900000+) must be published — otherwise the client has no
+    // WZ asset for them and the map fails to render.
+    if (reactorId >= 9900000) {
+      const [row] = await query<{ published: number }>(
+        "SELECT published FROM custom_reactors WHERE reactor_id = ?",
+        [reactorId],
+      );
+      if (!row) {
+        return NextResponse.json(
+          { error: `Reactor ${reactorId} is in the custom ID range but not registered. Use create_custom_reactor first.` },
+          { status: 400 },
+        );
+      }
+      if (!row.published) {
+        return NextResponse.json(
+          { error: `Reactor ${reactorId} is not published yet. The client has no sprite for it, so placing it will break the map. Re-run create_custom_reactor or wait for the end-of-session publish pass.` },
+          { status: 400 },
+        );
+      }
+    }
+
     await execute(
       "INSERT INTO preactor (world, map, rid, x, y, f, reactor_time, name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [world, mapId, reactorId, x, y, f, reactorTime, name],
