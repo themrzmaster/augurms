@@ -2914,8 +2914,32 @@ export async function runGameMaster(
   session.completedAt = new Date().toISOString();
   await persistSessionEnd(session);
 
+  // Sweep any custom reactors stuck in published=0 — a prior create_custom_reactor
+  // may have failed its inline publish (e.g. R2 creds missing at the time) and
+  // left an unusable reactor in the DB. Publishing handles its own server restart,
+  // so if we trigger it we skip the regular post-session restart below.
+  let publishTriggered = false;
+  if (session.status === "complete") {
+    try {
+      const unpublished = await dbQuery<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM custom_reactors WHERE published = 0"
+      );
+      if ((unpublished[0]?.n ?? 0) > 0) {
+        const res = await api("/api/admin/reactors/publish", { method: "POST" });
+        if (res?.status === "started") {
+          publishTriggered = true;
+          addLog({ type: "text", text: `[System] ${unpublished[0].n} unpublished custom reactor(s) detected — publish job started (will restart server when done).` });
+        } else if (res?.error) {
+          addLog({ type: "text", text: `[System] Custom reactor publish could not start: ${res.error}` });
+        }
+      }
+    } catch (err: any) {
+      addLog({ type: "text", text: `[System] Custom reactor publish sweep failed: ${err.message}` });
+    }
+  }
+
   // Auto-restart game server if session placed reactors or spawns
-  if (needsRestart && session.status === "complete") {
+  if (needsRestart && !publishTriggered && session.status === "complete") {
     try {
       await restartGameServer();
       addLog({ type: "text", text: "[System] Server restarted automatically to apply reactor/spawn changes." });

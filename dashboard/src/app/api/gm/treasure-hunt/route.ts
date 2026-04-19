@@ -74,6 +74,27 @@ export async function POST(request: NextRequest) {
     // Pick a visible reactor: use provided reactorId, or auto-select one that renders in client
     const rid = reactorId || pickVisibleReactor();
 
+    // Custom reactors (9900000+) must be published — otherwise the client has no
+    // WZ asset for them and the map fails to render. See MEMORY 2026-04-19 incident.
+    if (rid >= 9900000) {
+      const [row] = await query<{ published: number }>(
+        "SELECT published FROM custom_reactors WHERE reactor_id = ?",
+        [rid]
+      );
+      if (!row) {
+        return NextResponse.json(
+          { error: `Reactor ${rid} is in the custom ID range but not registered. Use create_custom_reactor first.` },
+          { status: 400 }
+        );
+      }
+      if (!row.published) {
+        return NextResponse.json(
+          { error: `Reactor ${rid} is not published yet. The client has no sprite for it, so placing it will break the map. Re-run create_custom_reactor or wait for the end-of-session publish pass.` },
+          { status: 400 }
+        );
+      }
+    }
+
     const actions: string[] = [];
     const reactorIds: number[] = [];
     const reactorDropIds: { reactorId: number; itemId: number }[] = [];
