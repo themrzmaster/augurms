@@ -2119,14 +2119,20 @@ async function buildHistoricalContext(): Promise<string> {
     const unreadFeedback = await dbQuery(
       "SELECT character_name, character_level, rating, message, created_at FROM player_feedback WHERE read_by_gm = 0 ORDER BY created_at DESC LIMIT 20"
     );
-    // Aggregate repeated themes — shows what multiple players are asking for
+    // Aggregate repeated themes — group by message AND count DISTINCT players,
+    // not raw rows. One player posting the same thing 16 times (or 10 alts
+    // posting in lockstep) is not 16 signals — it's 1. Spam inflated past
+    // session narratives ("over 40 requests") until we fixed this.
     const repeatedThemes = await dbQuery(
-      `SELECT LOWER(TRIM(message)) as msg, COUNT(*) as cnt, GROUP_CONCAT(DISTINCT character_name) as players
+      `SELECT LOWER(TRIM(message)) as msg,
+              COUNT(DISTINCT character_name) as players_cnt,
+              COUNT(*) as rows_cnt,
+              GROUP_CONCAT(DISTINCT character_name) as players
        FROM player_feedback
        WHERE created_at > DATE_SUB(NOW(), INTERVAL 14 DAY)
        GROUP BY LOWER(TRIM(message))
-       HAVING cnt >= 2
-       ORDER BY cnt DESC
+       HAVING players_cnt >= 2
+       ORDER BY players_cnt DESC, rows_cnt DESC
        LIMIT 10`
     );
     if ((feedbackCounts as any[]).length > 0 || (unreadFeedback as any[]).length > 0) {
@@ -2137,9 +2143,10 @@ async function buildHistoricalContext(): Promise<string> {
         context += `- Positive: ${counts.positive || 0} | Negative: ${counts.negative || 0} | Suggestions: ${counts.suggestion || 0}\n`;
       }
       if ((repeatedThemes as any[]).length > 0) {
-        context += `\n### Repeated Requests (multiple players asking for the same thing — act on these)\n`;
+        context += `\n### Repeated Requests (multiple distinct players asking for the same thing — act on these)\n`;
         for (const t of repeatedThemes as any[]) {
-          context += `- **"${t.msg}"** — ${t.cnt}x from: ${t.players}\n`;
+          const spamNote = t.rows_cnt > t.players_cnt * 2 ? ` [⚠ ${t.rows_cnt} raw posts — likely spam, weigh by player count]` : "";
+          context += `- **"${t.msg}"** — ${t.players_cnt} distinct player(s): ${t.players}${spamNote}\n`;
         }
       }
       if ((unreadFeedback as any[]).length > 0) {
@@ -2157,10 +2164,9 @@ async function buildHistoricalContext(): Promise<string> {
     );
     if (sessions.length > 0) {
       context += "\n\n## Recent Sessions\n";
+      context += "_(session ran, N changes made — do NOT re-describe past actions as today's work. Use `get_my_history` if you need to look one up.)_\n";
       for (const s of sessions as any[]) {
-        context += `- [${s.started_at}] ${s.trigger_type} | ${s.status} | ${s.changes_made} changes`;
-        if (s.summary) context += ` — ${s.summary.slice(0, 120)}`;
-        context += `\n`;
+        context += `- [${s.started_at}] ${s.trigger_type} | ${s.status} | ${s.changes_made} changes\n`;
       }
     }
   } catch { /* no sessions yet */ }
@@ -2439,6 +2445,11 @@ You can create database-driven NPCs that players can interact with. These are po
 - Use \`update_custom_npc\` to change an NPC's shop items, dialogue, or destinations — changes are instant (no restart).
 - Vote point shops are especially valuable — they reward players who vote and give them something to spend points on.
 - **CRITICAL — Teleporter map IDs**: NEVER guess or assume map IDs from memory. You MUST call \`search_maps\` for every destination before setting teleporter configs. The API will reject nonexistent map IDs. Past sessions have broken teleporters by using hallucinated IDs (e.g. setting "Three Doors" to a Cave of Life map, or "New Leaf City" to a nonexistent ID). Always verify.
+
+### Shop Stock is Persistent — Don't Re-Narrate Old Additions
+Items you added to a shop (Maple Merchant, Chrono Grocer, any \`update_custom_npc\`) stay there across sessions. \`update_custom_npc\` replaces the whole item list, so every session you include the same items — but those are NOT today's changes, they're existing stock you're preserving. Before citing "added X to shop Y" in a summary, call \`list_custom_npcs\` or check the most recent \`update_custom_npc\` tool_input for that NPC. If the item was already there last session, don't list it as today's action — players have already seen it for days.
+
+Example of the mistake to avoid: Scroll for Sword ATT 10% was added to Maple Merchant on 2026-04-18. It has since been re-cited as "today's action" in the 04-18 evening, 04-19, and 04-20 session summaries — even though nothing changed. Don't do that.
 
 ### NPC Discipline — Quality Over Quantity
 You have a LIMITED pool of NPC appearances (only 9 total). Treat them as a scarce resource.
