@@ -124,6 +124,7 @@ async function runPublishJob() {
       }
     }
 
+    const processedIds: number[] = [];
     for (const row of rows) {
       const reactorId = row.reactor_id;
       update(`Processing reactor ${reactorId} (${row.name})...`);
@@ -136,6 +137,7 @@ async function runPublishJob() {
         update(`Skipping ${reactorId}`, `Reactor ${reactorId} has no idle PNG — skipped`);
         continue;
       }
+      processedIds.push(reactorId);
 
       // Generate animation frames
       const frames = generateReactorFrames(idlePng, row.animation_style as AnimationStyle);
@@ -190,11 +192,15 @@ async function runPublishJob() {
     if (!uploadResult.success) throw new Error(`R2 upload failed: ${uploadResult.error}`);
     update("Uploaded", "Uploaded server-wz.tar.gz to R2");
 
-    // 7. Mark all as published
-    const ids = rows.map((r: any) => r.reactor_id);
-    await execute(
-      `UPDATE custom_reactors SET published = 1 WHERE reactor_id IN (${ids.join(",")})`
-    );
+    // 7. Mark only reactors that actually went through the pipeline (had an
+    // idle PNG). Rows skipped above have no server XML and no client sprite —
+    // flagging them published would let the placement gate pass them through
+    // and break maps. See 2026-04-19 Henesys/Kerning incident.
+    if (processedIds.length > 0) {
+      await execute(
+        `UPDATE custom_reactors SET published = 1 WHERE reactor_id IN (${processedIds.join(",")})`
+      );
+    }
 
     // 8. Version marker
     const version = new Date().toISOString();
