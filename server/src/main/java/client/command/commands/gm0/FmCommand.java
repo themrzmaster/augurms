@@ -25,7 +25,7 @@ package client.command.commands.gm0;
 
 import client.Client;
 import client.command.Command;
-import server.maps.FieldLimit;
+import constants.id.MapId;
 
 public class FmCommand extends Command {
     {
@@ -44,14 +44,21 @@ public class FmCommand extends Command {
         }
         
         // Check if map has forced return (boss maps, event maps, etc.)
-        if (map.getForcedReturnId() != 999999999) {
+        if (map.getForcedReturnId() != MapId.NONE) {
             player.dropMessage(5, "You cannot use @fm in this map.");
             return;
         }
+
+        // Check if the player is trading / in minigame / in playershop / in hiredmerchant UI
+        if (player.getTrade() != null || player.getMiniGame() != null || player.getPlayerShop() != null || player.getHiredMerchant() != null) {
+            player.dropMessage(5, "You cannot use @fm now.");
+            return;
+        }
         
-        // Save current location to FREE_MARKET saved location
+        // Save current location to FREE_MARKET saved location and ensure @return will work
         player.saveLocation("FREE_MARKET");
-        
+        player.saveLocationOnWarp();
+
         // Teleport to Free Market (map 910000000)
         player.changeMap(910000000, "out00");
     }
