@@ -36,7 +36,9 @@ import javax.xml.parsers.ParserConfigurationException;
 import java.awt.*;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.file.Path;
+import org.xml.sax.InputSource;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -49,7 +51,9 @@ public class XMLDomMapleData implements Data {
         try {
             DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
             DocumentBuilder documentBuilder = documentBuilderFactory.newDocumentBuilder();
-            Document document = documentBuilder.parse(fis);
+            String rawXml = new String(fis.readAllBytes(), "UTF-8");
+            String sanitizedXml = rawXml.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
+            Document document = documentBuilder.parse(new InputSource(new StringReader(sanitizedXml)));
             this.node = document.getFirstChild();
         } catch (ParserConfigurationException e) {
             throw new RuntimeException(e);

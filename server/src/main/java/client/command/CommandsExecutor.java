@@ -54,6 +54,7 @@ import client.command.commands.gm0.WhoDropsCommand;
 import client.command.commands.gm0.FeedbackCommand;
 import client.command.commands.gm0.RecalcHpCommand;
 import client.command.commands.gm0.WorldChatCommand;
+import client.command.commands.gm0.FmCommand;
 import client.command.commands.gm1.BossHpCommand;
 import client.command.commands.gm1.BuffMeCommand;
 import client.command.commands.gm1.GotoCommand;
@@ -375,6 +376,7 @@ public class CommandsExecutor {
         addCommand("feedback", FeedbackCommand.class);
         addCommand("recalchp", RecalcHpCommand.class);
         addCommand(new String[]{"world", "w"}, WorldChatCommand.class);
+        addCommand("fm", FmCommand.class);
 
         commandsNameDesc.add(levelCommandsCursor);
     }
