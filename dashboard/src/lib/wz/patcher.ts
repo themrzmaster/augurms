@@ -1151,7 +1151,12 @@ export function buildWeaponImg(weapon: WeaponData, ks: Buffer): Buffer {
 
   for (const prop of infoProps) {
     if (prop.type === "canvas") {
-      writeIconCanvas(w, prop.name, icon, -4, icon.height);
+      // Center icon in the 32px inventory slot: originX = floor((width - 32) / 2).
+      // Origin shifts the canvas anchor; canvas pixel 0 draws at slot x=-originX.
+      // A 32-wide icon gives origin.x=0 (fills slot); wider icons hang by half
+      // the excess on each side; narrower icons get slightly offset right.
+      const iconOriginX = Math.floor((icon.width - 32) / 2);
+      writeIconCanvas(w, prop.name, icon, iconOriginX, icon.height);
     } else if (prop.type === "short") {
       w.writeStringBlock(prop.name, 0x00, 0x01);
       w.writeByte(2); // WzShortProperty

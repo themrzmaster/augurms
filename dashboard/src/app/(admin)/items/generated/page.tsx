@@ -188,25 +188,6 @@ function AssetDetailModal({ item, onClose }: { item: GeneratedItem; onClose: () 
                 <img src={conceptUrl(item)} alt="concept" className="h-full w-full object-contain" />
               </div>
             </div>
-            {item.glb_url && (
-              <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-                  3D Model (Tripo3D)
-                </h4>
-                <a
-                  href={item.glb_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 rounded-lg border border-border bg-bg-primary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-card-hover"
-                >
-                  Download GLB
-                  <span className="text-text-muted">↗</span>
-                </a>
-                {item.tripo_task_id && (
-                  <p className="mt-1 break-all text-[10px] text-text-muted">task {item.tripo_task_id}</p>
-                )}
-              </div>
-            )}
             <div>
               <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">Description</h4>
               <p className="whitespace-pre-wrap text-xs text-text-secondary">{item.description}</p>

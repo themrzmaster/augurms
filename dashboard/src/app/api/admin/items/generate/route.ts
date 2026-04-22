@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateImage } from "@/lib/openrouter/image";
-import { uploadImage, createImageToModelTask, pollTask, downloadGlb } from "@/lib/tripo3d/client";
-import { renderWeaponGlb } from "@/lib/wz/headless-renderer";
+import { renderWeaponFromConcept } from "@/lib/wz/sprite-2d";
 import { uploadToR2, isR2Configured } from "@/lib/r2";
 import { WEAPON_TYPES } from "@/lib/wz";
 import {
@@ -65,15 +64,14 @@ function validateBag(
 
 function buildConceptPrompt(description: string, weaponType: string): string {
   const label = WEAPON_TYPES[weaponType]?.label ?? weaponType;
-  // Orthographic dead-on front view: image-to-3D reconstructs symmetric
-  // weapons far better from a flat front than a 3/4 perspective shot —
-  // perspective foreshortening confuses Tripo's symmetry priors and makes
-  // the back face a smeared back-projection of the front texture.
+  // Pure black background: flood-fill bg-removal in the 2D sprite pipeline is
+  // reliable against pure black, including when the weapon has white/silver
+  // highlights that would otherwise blend into a white background.
   return `Generate a single ${label} weapon concept sprite: ${description}.
 Style: flat orthographic front elevation, dead-on side view of the weapon,
 no perspective, no foreshortening, no rotation. Weapon fills the frame
 vertically, pointing straight up, perfectly centered, mirror-symmetric
-across the vertical axis, on a plain pure white (#FFFFFF) background.
+across the vertical axis, on a plain pure black (#000000) background.
 No shadows, no props, no characters, no text or UI, no ground plane.
 Vivid colors, crisp edges, high detail on the head of the weapon.
 The weapon is the ONLY subject. No scene. No duplicates. No background gradient.`;
@@ -191,25 +189,7 @@ export async function POST(request: NextRequest) {
       status: "rendering",
     });
 
-    // 2. Tripo3D image-to-model — upload buffer directly, no R2 dependency
-    const imageToken = await uploadImage(conceptPng, "concept.png", "image/png");
-    const taskId = await createImageToModelTask({ imageToken, imageType: "png" });
-    await updateGeneration(generationId, { tripo_task_id: taskId });
-    const task = await pollTask(taskId, { timeoutMs: 8 * 60_000 });
-    if (task.status !== "success" || !task.modelUrl) {
-      throw new Error(`Tripo3D task did not produce a model (status=${task.status}, error=${task.error})`);
-    }
-    const glbBuf = await downloadGlb(task.modelUrl);
-
-    // Persist GLB: prefer R2 (stable URL), fall back to the short-lived Tripo URL.
-    let glbStoredUrl = task.modelUrl;
-    if (isR2Configured()) {
-      const glbUp = await uploadToR2(`custom-items/generated/${generationId}/model.glb`, glbBuf);
-      if (glbUp.success) glbStoredUrl = glbUp.url;
-    }
-    await updateGeneration(generationId, { glb_url: glbStoredUrl });
-
-    // 3. Allocate next item ID
+    // 2. Allocate next item ID
     const nextIdRes = await fetchInternal(
       request,
       `/api/admin/items/next-id?subCategory=Weapon&weaponType=${encodeURIComponent(weapon_type)}&count=1`
@@ -219,8 +199,8 @@ export async function POST(request: NextRequest) {
     const itemId = nextIdData.suggested?.[0];
     if (!itemId) throw new Error("No free item ID available for this weapon type");
 
-    // 4. Headless render
-    const rendered = await renderWeaponGlb({ glb: glbBuf });
+    // 3. 2D sprite rendering: rotate bg-removed concept for each animation angle
+    const rendered = await renderWeaponFromConcept({ conceptPng });
 
     // 5. Upload frames + icon to R2
     const renderRes = await fetchInternal(request, "/api/admin/items/render-weapon", {
@@ -282,7 +262,7 @@ export async function POST(request: NextRequest) {
       name: finalName,
       weaponType: weapon_type,
       conceptImageUrl: conceptUrl,
-      glbUrl: glbStoredUrl,
+      glbUrl: null,
       iconUrl: renderData.iconUrl,
       frameCount: Object.values(rendered.frames).flat().length,
       message: publishMessage,

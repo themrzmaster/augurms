@@ -1,13 +1,9 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Card from "@/components/Card";
 import SpriteImage from "@/components/SpriteImage";
-import dynamic from "next/dynamic";
-import type { RenderOutput } from "@/components/WeaponRenderer";
-
-const WeaponRenderer = dynamic(() => import("@/components/WeaponRenderer"), { ssr: false });
 
 const SUB_CATEGORIES = [
   "Ring", "Pendant", "Face", "Eye", "Earring", "Belt", "Medal",
@@ -89,17 +85,15 @@ export default function CreateItemPage() {
   // Weapon-specific state
   const [weaponType, setWeaponType] = useState("staff");
   const [attackSpeed, setAttackSpeed] = useState(6);
-  const [glbFile, setGlbFile] = useState<File | null>(null);
+  const [conceptFile, setConceptFile] = useState<File | null>(null);
   const [rendering, setRendering] = useState(false);
   const [renderProgress, setRenderProgress] = useState("");
-  const [renderPct, setRenderPct] = useState(0);
-  const [renderTrigger, setRenderTrigger] = useState(0);
   const [renderResult, setRenderResult] = useState<{
     origins: Record<string, Array<{ gripX?: number; gripY?: number; x?: number; y?: number }>>;
     frames: Record<string, string[]>;
     iconUrl: string | null;
   } | null>(null);
-  const glbInputRef = useRef<HTMLInputElement>(null);
+  const conceptInputRef = useRef<HTMLInputElement>(null);
 
   const isWeapon = subCategory === "Weapon";
 
@@ -222,39 +216,31 @@ export default function CreateItemPage() {
     }
   };
 
-  const handleRenderWeapon = () => {
-    if (!glbFile || !itemId) {
-      setError("Upload a .glb file and set an Item ID first.");
+  const handleRenderWeapon = async () => {
+    if (!conceptFile || !itemId) {
+      setError("Upload a concept image and set an Item ID first.");
       return;
     }
     setRendering(true);
-    setRenderProgress("Starting...");
-    setRenderPct(0);
+    setRenderProgress("Reading concept...");
     setError(null);
-    setRenderTrigger((t) => t + 1);
-  };
 
-  const handleRenderProgress = useCallback((msg: string, pct: number) => {
-    setRenderProgress(msg);
-    setRenderPct(pct);
-  }, []);
-
-  const handleRenderComplete = useCallback(async (result: RenderOutput) => {
-    // Upload frames to R2 via API
-    setRenderProgress("Uploading frames...");
     try {
-      const res = await fetch("/api/admin/items/render-weapon", {
+      const conceptDataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Failed to read concept image"));
+        reader.readAsDataURL(conceptFile);
+      });
+
+      setRenderProgress("Rendering 2D sprite pipeline...");
+      const res = await fetch("/api/admin/items/render-concept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          itemId,
-          icon: result.iconDataUrl,
-          origins: result.origins,
-          frames: result.frames,
-        }),
+        body: JSON.stringify({ itemId, concept: conceptDataUrl }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
+      if (!res.ok) throw new Error(data.error || "Render failed");
 
       setRenderResult({
         origins: data.origins,
@@ -275,13 +261,7 @@ export default function CreateItemPage() {
       setRendering(false);
       setRenderProgress("");
     }
-  }, [itemId, iconPreview]);
-
-  const handleRenderError = useCallback((msg: string) => {
-    setError(msg);
-    setRendering(false);
-    setRenderProgress("");
-  }, []);
+  };
 
   const setStat = (key: string, value: string) => {
     const num = parseInt(value) || 0;
@@ -303,7 +283,7 @@ export default function CreateItemPage() {
     }
 
     if (isWeapon && !renderResult) {
-      setError("Render weapon frames before saving. Upload a .glb and click 'Render Frames'.");
+      setError("Render weapon frames before saving. Upload a concept PNG and click 'Render Frames'.");
       return;
     }
 
@@ -373,7 +353,7 @@ export default function CreateItemPage() {
           <p className="mt-1.5 text-text-secondary">
             Define a new equip item with custom stats.{" "}
             {isWeapon
-              ? "Upload a 3D model (.glb) to generate animation frames."
+              ? "Upload a concept image (PNG) to generate MapleStory animation frames."
               : "Client will show the base item sprite until WZ is patched."}
           </p>
         </div>
@@ -454,12 +434,12 @@ export default function CreateItemPage() {
                     type="number"
                     value={baseItemId}
                     onChange={(e) => setBaseItemId(e.target.value)}
-                    placeholder={isWeapon ? "Optional — frames from 3D model" : "e.g. 1112000"}
+                    placeholder={isWeapon ? "Optional — frames from concept" : "e.g. 1112000"}
                     className="w-full rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/30"
                   />
                   <p className="mt-1 text-xs text-text-muted">
                     {isWeapon
-                      ? "Optional fallback sprite. 3D model frames take priority."
+                      ? "Optional fallback sprite. Concept-rendered frames take priority."
                       : "Client shows this item's sprite until WZ is patched."}
                   </p>
                 </div>
@@ -507,7 +487,7 @@ export default function CreateItemPage() {
                         setIdInfo(null);
                         if (cat !== "Weapon") {
                           setRenderResult(null);
-                          setGlbFile(null);
+                          setConceptFile(null);
                         }
                       }}
                       className={`rounded-full px-3 py-1.5 text-xs font-medium border transition-all ${
@@ -567,36 +547,36 @@ export default function CreateItemPage() {
                   </div>
                 </div>
 
-                {/* 3D Model Upload */}
+                {/* Concept image upload (fed into the 2D sprite pipeline) */}
                 <div>
                   <label className="block text-sm font-medium text-text-secondary mb-2">
-                    3D Model (.glb / .gltf)
+                    Concept image (PNG) — weapon pointing up on solid black bg
                   </label>
                   <input
-                    ref={glbInputRef}
+                    ref={conceptInputRef}
                     type="file"
-                    accept=".glb,.gltf"
+                    accept="image/png"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        setGlbFile(file);
+                        setConceptFile(file);
                         setRenderResult(null);
                       }
                     }}
                   />
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={() => glbInputRef.current?.click()}
+                      onClick={() => conceptInputRef.current?.click()}
                       className="rounded-lg border border-border bg-bg-secondary px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:border-border-light transition-colors"
                     >
-                      {glbFile ? glbFile.name : "Choose .glb file..."}
+                      {conceptFile ? conceptFile.name : "Choose concept.png..."}
                     </button>
                     <button
                       onClick={handleRenderWeapon}
-                      disabled={!glbFile || !itemId || rendering}
+                      disabled={!conceptFile || !itemId || rendering}
                       className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
-                        !glbFile || !itemId || rendering
+                        !conceptFile || !itemId || rendering
                           ? "bg-bg-card text-text-muted border border-border cursor-not-allowed"
                           : "bg-accent-blue text-white hover:bg-accent-blue/90"
                       }`}
@@ -605,19 +585,9 @@ export default function CreateItemPage() {
                     </button>
                   </div>
                   {rendering && (
-                    <div className="mt-2">
-                      <p className="text-xs text-accent-blue animate-pulse">
-                        {renderProgress || "Rendering..."}
-                      </p>
-                      {renderPct > 0 && (
-                        <div className="mt-1 h-1.5 w-full rounded-full bg-bg-secondary overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-accent-blue transition-all duration-300"
-                            style={{ width: `${renderPct}%` }}
-                          />
-                        </div>
-                      )}
-                    </div>
+                    <p className="mt-2 text-xs text-accent-blue animate-pulse">
+                      {renderProgress || "Rendering..."}
+                    </p>
                   )}
                 </div>
 
@@ -657,17 +627,6 @@ export default function CreateItemPage() {
                 )}
               </div>
             </Card>
-          )}
-
-          {/* Hidden Three.js renderer */}
-          {isWeapon && (
-            <WeaponRenderer
-              glbFile={glbFile}
-              triggerRender={renderTrigger}
-              onRenderComplete={handleRenderComplete}
-              onProgress={handleRenderProgress}
-              onError={handleRenderError}
-            />
           )}
 
           {/* Stats */}

@@ -1655,7 +1655,7 @@ teleporter: {"greeting":"Where to?","destinations":[{"mapId":100000000,"name":"H
     type: "function",
     function: {
       name: "generate_item",
-      description: "Generate a brand-new weapon from a text description. Pipeline: Flux creates a concept image → Tripo3D turns it into a 3D model → headless renderer produces 38 MapleStory sprite frames + an icon. The resulting item lands in 'ready' state — NOT live yet. Use publish_generated_item to push it live, or reject_generated_item to discard. Costs ~$0.42 per successful generation (Flux + Tripo3D). Daily cap enforced (GM_ITEM_GEN_DAILY_CAP, default 8). Use sparingly: to reward player feedback, fill gaps in a weapon tier, or mark special events — not as casual filler. Item ID is allocated automatically within the correct range for the chosen weapon_type.",
+      description: "Generate a brand-new weapon from a text description. Pipeline: Flux creates a concept image on a black background → 2D sprite pipeline rotates the concept for each MapleStory animation angle → 38 sprite frames + an icon. The resulting item lands in 'ready' state — NOT live yet. Use publish_generated_item to push it live, or reject_generated_item to discard. Costs ~$0.04 per successful generation (Flux image only). Daily cap enforced (GM_ITEM_GEN_DAILY_CAP, default 8). Use sparingly: to reward player feedback, fill gaps in a weapon tier, or mark special events — not as casual filler. Item ID is allocated automatically within the correct range for the chosen weapon_type.",
       parameters: {
         type: "object",
         properties: {
@@ -2476,7 +2476,7 @@ Your historical context includes item IDs from past events. Players may still ha
 - Check \`get_my_history\` for details on what items you distributed and in what quantities
 
 ## AI Item Generation — Create Brand-New Weapons
-You can invent brand-new weapons using the full AI pipeline: \`generate_item\` creates a concept image (Flux) → 3D model (Tripo3D) → 38 MapleStory sprite frames + icon, all automatic. The item is saved in 'ready' state but NOT yet live in-game — you must \`publish_generated_item\` afterwards (or \`reject_generated_item\` if the render came out wrong).
+You can invent brand-new weapons using the full AI pipeline: \`generate_item\` creates a concept image (Flux, black background) → 2D sprite pipeline rotates that concept for each MapleStory animation angle → 38 sprite frames + icon, all automatic. The item is saved in 'ready' state but NOT yet live in-game — you must \`publish_generated_item\` afterwards (or \`reject_generated_item\` if the render came out wrong).
 
 ### Purpose
 Generated items exist to create **uniqueness** — moments, artifacts, and stories that could only exist on this server. They are not a vending machine and not a reward-on-request system. The goal is a living world where surprising things appear *because the server decided they should*, not because someone asked.
@@ -2494,9 +2494,9 @@ Generated items exist to create **uniqueness** — moments, artifacts, and stori
 - Speculatively — don't generate without a concrete plan for who gets it, how they find it, and what makes the moment memorable.
 
 ### Costs & Limits
-- ~$0.42 USD per successful generation (Flux image + Tripo3D model). You are spending real money. Treat every generation like a deliberate design choice.
+- ~$0.04 USD per successful generation (Flux image only — 2D sprite rendering is local). You are spending real money. Treat every generation like a deliberate design choice.
 - Daily cap: GM_ITEM_GEN_DAILY_CAP (default 8 per day). Failed generations still count. Plan before calling.
-- Each generation takes ~60–90 seconds end to end.
+- Each generation takes ~15–25 seconds end to end (just the Flux call + local sprite render).
 
 ### Balance Rules — HARD, NON-NEGOTIABLE
 Unbalanced generated items damage the server's economy and erode trust faster than any other action you can take. Treat these as gates, not guidelines:
