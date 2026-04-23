@@ -8,6 +8,7 @@ import {
   updateGeneration,
   countGeneratedToday,
 } from "@/lib/gm/generated-items";
+import { query } from "@/lib/db";
 import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 
@@ -147,6 +148,21 @@ export async function POST(request: NextRequest) {
       { error: `Daily item generation cap reached (${usedToday}/${DAILY_GENERATION_CAP}). Try again tomorrow.` },
       { status: 429 }
     );
+  }
+
+  if (name?.trim()) {
+    const existing = await query<{ item_id: number; name: string }>(
+      "SELECT item_id, name FROM custom_items WHERE LOWER(name) = LOWER(?) LIMIT 1",
+      [name.trim()]
+    );
+    if (existing.length > 0) {
+      return NextResponse.json(
+        {
+          error: `An item named "${existing[0].name}" already exists (item_id ${existing[0].item_id}). Pick a different name, or use the existing item — do not regenerate the same name.`,
+        },
+        { status: 409 }
+      );
+    }
   }
 
   const generationId = await recordGeneration({
