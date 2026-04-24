@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { execute, query } from "@/lib/db";
 import { uploadToR2, isR2Configured } from "@/lib/r2";
-import { ASSET_RANGES, type AssetType } from "./next-id/route";
+import { ASSET_RANGES, type AssetType } from "@/lib/assets/ranges";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
