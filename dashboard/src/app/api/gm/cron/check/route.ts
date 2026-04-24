@@ -24,6 +24,31 @@ export async function GET() {
       });
     }
 
+    // Self-healing gate: if any session started within the last
+    // interval_hours/2, treat as already-handled regardless of next_run. This
+    // protects against fetch-timeout races where a long-running session causes
+    // the inner POST to look failed (so next_run gets bumped to +15min) even
+    // though the session ran to completion in the background.
+    const intervalHours = Number(s.interval_hours) || 12;
+    const halfInterval = Math.max(1, Math.floor(intervalHours / 2));
+    const recentSession = await query<{ id: string; started_at: string }>(
+      `SELECT id, started_at FROM gm_sessions WHERE started_at > DATE_SUB(NOW(), INTERVAL ? HOUR) ORDER BY started_at DESC LIMIT 1`,
+      [halfInterval]
+    );
+    if (recentSession.length > 0) {
+      const startedAt = recentSession[0].started_at;
+      await execute(
+        "UPDATE gm_schedule SET last_run = ?, next_run = DATE_ADD(?, INTERVAL interval_hours HOUR) WHERE id = 1",
+        [startedAt, startedAt]
+      );
+      return NextResponse.json({
+        action: "skip",
+        reason: `recent session within ${halfInterval}h — schedule resynced`,
+        sessionId: recentSession[0].id,
+        startedAt,
+      });
+    }
+
     // Auto-expire stuck sessions before triggering a new run
     await execute(
       "UPDATE gm_sessions SET status = 'error', completed_at = NOW(), summary = 'Auto-expired: session timed out after 10 minutes' WHERE status = 'running' AND started_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)"

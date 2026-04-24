@@ -3,7 +3,9 @@ import { runGameMaster } from "@/lib/gamemaster/engine";
 import { query, execute } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 5 min max for autonomous runs
+export const maxDuration = 600; // 10 min — sessions can take 5–13 min; the
+// outer cron/check awaits this fetch and treats a timeout as a failure (which
+// would set next_run to +15min and re-fire the cron loop on the next tick).
 
 function buildCronPrompt(): string {
   const now = new Date();
