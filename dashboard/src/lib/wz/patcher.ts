@@ -1927,6 +1927,53 @@ export function addEquipToCharacterWz(
   });
 }
 
+/**
+ * Inject a pre-built .img blob into Character.wz at /Hair/<id>.img or /Face/<id>.img.
+ *
+ * The buffer must be the raw bytes of a standalone .img file extracted from a
+ * GMS-encrypted WZ (same XOR keystream as v83). HaRepacker's "Save .img" output
+ * works directly. If an .img with the same name is already present it is
+ * replaced (so re-uploading a fixed asset overwrites the prior version).
+ */
+export function addImgToCharacterWz(
+  wzInfo: WzFileInfo,
+  opts: { dirName: "Hair" | "Face"; id: number; imgData: Buffer }
+): void {
+  const imgName = `${padItemId(opts.id)}.img`;
+
+  let subDir = wzInfo.root.find(
+    (e) => e.type === "dir" && e.name === opts.dirName
+  );
+  if (!subDir) {
+    subDir = {
+      type: "dir",
+      name: opts.dirName,
+      blockSize: 0,
+      checksum: 0,
+      offset: 0,
+      children: [],
+    };
+    wzInfo.root.push(subDir);
+  }
+
+  const checksum = computeChecksum(opts.imgData);
+  const newEntry: WzEntry = {
+    type: "img",
+    name: imgName,
+    blockSize: opts.imgData.length,
+    checksum,
+    offset: 0,
+    data: opts.imgData,
+  };
+
+  const existingIdx = subDir.children!.findIndex((e) => e.name === imgName);
+  if (existingIdx >= 0) {
+    subDir.children![existingIdx] = newEntry;
+  } else {
+    subDir.children!.push(newEntry);
+  }
+}
+
 /** Modify Eqp.img in a parsed String.wz to add item names */
 export function addStringsToStringWz(
   wzInfo: WzFileInfo,

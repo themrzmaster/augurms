@@ -29,6 +29,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/worldmap", label: "World Map", icon: "🌏" },
       { href: "/mobs", label: "Mobs", icon: "👾" },
       { href: "/items", label: "Items", icon: "🎒" },
+      { href: "/assets", label: "Hair & Face", icon: "💇" },
       { href: "/reactors", label: "Reactors", icon: "💥" },
       { href: "/drops", label: "Drops", icon: "💎" },
       { href: "/scripts", label: "Scripts", icon: "📜" },
@@ -48,6 +49,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/config", label: "Config", icon: "⚙️" },
       { href: "/events", label: "Events", icon: "🎉" },
       { href: "/tracking", label: "Tracking", icon: "📊" },
+      { href: "/users", label: "Admin Users", icon: "🔑" },
     ],
   },
 ];

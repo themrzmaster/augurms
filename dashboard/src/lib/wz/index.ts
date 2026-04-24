@@ -2,6 +2,7 @@ export {
   parseWzFile,
   saveWzFile,
   addEquipToCharacterWz,
+  addImgToCharacterWz,
   addStringsToStringWz,
   addWeaponToCharacterWz,
   buildEquipImg,

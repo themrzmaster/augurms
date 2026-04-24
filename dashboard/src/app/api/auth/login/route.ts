@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { signToken, verifyPassword, sessionCookie, checkRateLimit } from "@/lib/auth";
+import {
+  signToken,
+  verifyPassword,
+  sessionCookie,
+  checkRateLimit,
+  findAdminUser,
+  recordAdminLogin,
+} from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   const ip = request.headers.get("x-forwarded-for") || "unknown";
@@ -12,25 +19,42 @@ export async function POST(request: NextRequest) {
   }
 
   const { username, password } = await request.json();
-
-  const adminUser = process.env.ADMIN_USER;
-  const adminPassHash = process.env.ADMIN_PASS_HASH;
-
-  if (!adminUser || !adminPassHash) {
-    return NextResponse.json(
-      { error: "Admin credentials not configured" },
-      { status: 500 }
-    );
-  }
-
-  if (username !== adminUser || !(await verifyPassword(password, adminPassHash))) {
+  if (typeof username !== "string" || typeof password !== "string") {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
-  const token = await signToken({ sub: adminUser, role: "admin" });
-  const cookie = sessionCookie(token);
+  // 1) Try DB-backed user first.
+  const dbUser = await findAdminUser(username);
+  if (dbUser) {
+    if (dbUser.disabled) {
+      return NextResponse.json({ error: "Account disabled" }, { status: 403 });
+    }
+    if (!(await verifyPassword(password, dbUser.password_hash))) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    }
+    await recordAdminLogin(dbUser.id);
+    const token = await signToken({ sub: dbUser.username, role: dbUser.role });
+    const response = NextResponse.json({ ok: true });
+    response.cookies.set(sessionCookie(token));
+    return response;
+  }
 
-  const response = NextResponse.json({ ok: true });
-  response.cookies.set(cookie);
-  return response;
+  // 2) Fallback: env-var bootstrap admin (always available so we can never
+  //    get locked out by an empty/unreachable admin_users table).
+  const adminUser = process.env.ADMIN_USER;
+  const adminPassHash = process.env.ADMIN_PASS_HASH;
+
+  if (
+    adminUser &&
+    adminPassHash &&
+    username === adminUser &&
+    (await verifyPassword(password, adminPassHash))
+  ) {
+    const token = await signToken({ sub: adminUser, role: "admin" });
+    const response = NextResponse.json({ ok: true });
+    response.cookies.set(sessionCookie(token));
+    return response;
+  }
+
+  return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
 }
