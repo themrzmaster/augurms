@@ -67,6 +67,7 @@ import tools.PacketCreator;
 import tools.packets.WeddingPackets;
 
 import java.awt.*;
+import java.io.File;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.*;
@@ -1098,5 +1099,31 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
         }
 
         return false;
+    }
+
+    /**
+     * Dynamically reads the WZ directory to find all valid Hair or Face IDs.
+     * 
+     * @param type "Hair" or "Face"
+     * @return List of valid IDs currently loaded on the server
+     */
+    public List<Integer> getLiveWzStyles(String type) {
+        List<Integer> validIds = new ArrayList<>();
+        try {
+            File dir = new File(System.getProperty("wzpath", "wz") + "/Character.wz/" + type);
+            if (dir.exists() && dir.isDirectory()) {
+                for (File file : dir.listFiles()) {
+                    String name = file.getName();
+                    if (name.endsWith(".img.xml")) {
+                        // Strip leading zeros and the extension (e.g. 00030000.img.xml -> 30000)
+                        String rawId = name.replace(".img.xml", "");
+                        validIds.add(Integer.parseInt(rawId));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("[Stylist] Failed to load WZ directory for " + type + ": " + e);
+        }
+        return validIds;
     }
 }
