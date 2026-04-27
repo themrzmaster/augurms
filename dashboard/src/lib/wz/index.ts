@@ -5,11 +5,17 @@ export {
   addImgToCharacterWz,
   addStringsToStringWz,
   addWeaponToCharacterWz,
+  addEtcBucketToItemWz,
+  addEtcStringsToStringWz,
+  addNpcToStringWz,
   buildEquipImg,
+  buildEtcBucketImg,
   buildWeaponImg,
   getSectionName,
   WEAPON_TYPES,
 } from "./patcher";
+
+export { addNpcToWz, buildNpcImg, generateNpcXml } from "./npc-builder";
 export type {
   WzFileInfo,
   WzEntry,

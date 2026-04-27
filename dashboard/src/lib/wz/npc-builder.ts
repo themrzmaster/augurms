@@ -311,9 +311,15 @@ function writeCanvas(w: ImgWriter, name: string, canvas: DecodedCanvas, delay?: 
  *
  * Structure:
  *   info/speak/0 = "n0"
+ *   info/script/0/script = <scriptName>     (only when scriptName is given —
+ *                                            v83 needs this for click handling)
  *   stand/0 = canvas with origin at center-bottom
  */
-export function buildNpcImg(pngBuf: Buffer, ks: Buffer): Buffer {
+export function buildNpcImg(
+  pngBuf: Buffer,
+  ks: Buffer,
+  scriptName?: string
+): Buffer {
   const canvas = decodePngToCanvas(pngBuf);
   const w = new ImgWriter(ks);
 
@@ -329,7 +335,7 @@ export function buildNpcImg(pngBuf: Buffer, ks: Buffer): Buffer {
   w.writeInt32(0);
   w.writeStringBlock("Property", 0x73, 0x1b);
   w.writeUInt16(0);
-  w.writeCompressedInt(1); // 1 child: speak
+  w.writeCompressedInt(scriptName ? 2 : 1);
 
   // info/speak
   w.writeStringBlock("speak", 0x00, 0x01);
@@ -346,6 +352,33 @@ export function buildNpcImg(pngBuf: Buffer, ks: Buffer): Buffer {
   w.writeStringBlock("n0", 0x00, 0x01);
 
   w.patchInt32(speakLenPos, w.pos - speakLenPos - 4);
+
+  // info/script/0/script = <scriptName>
+  if (scriptName) {
+    w.writeStringBlock("script", 0x00, 0x01);
+    w.writeByte(9);
+    const scriptLenPos = w.pos;
+    w.writeInt32(0);
+    w.writeStringBlock("Property", 0x73, 0x1b);
+    w.writeUInt16(0);
+    w.writeCompressedInt(1); // 1 child: "0"
+
+    w.writeStringBlock("0", 0x00, 0x01);
+    w.writeByte(9);
+    const slotLenPos = w.pos;
+    w.writeInt32(0);
+    w.writeStringBlock("Property", 0x73, 0x1b);
+    w.writeUInt16(0);
+    w.writeCompressedInt(1); // 1 child: "script"
+
+    w.writeStringBlock("script", 0x00, 0x01);
+    w.writeByte(8);
+    w.writeStringBlock(scriptName, 0x00, 0x01);
+
+    w.patchInt32(slotLenPos, w.pos - slotLenPos - 4);
+    w.patchInt32(scriptLenPos, w.pos - scriptLenPos - 4);
+  }
+
   w.patchInt32(infoLenPos, w.pos - infoLenPos - 4);
 
   // --- stand block ---
@@ -373,9 +406,14 @@ function computeChecksum(data: Buffer): number {
 }
 
 /** Add a custom NPC to a parsed Npc.wz */
-export function addNpcToWz(wzInfo: WzFileInfo, npcId: number, pngBuf: Buffer): void {
+export function addNpcToWz(
+  wzInfo: WzFileInfo,
+  npcId: number,
+  pngBuf: Buffer,
+  scriptName?: string
+): void {
   const imgName = `${String(npcId).padStart(7, "0")}.img`;
-  const imgData = buildNpcImg(pngBuf, wzInfo.keyStream);
+  const imgData = buildNpcImg(pngBuf, wzInfo.keyStream, scriptName);
   const checksum = computeChecksum(imgData);
 
   const existingIdx = wzInfo.root.findIndex((e) => e.name === imgName);
@@ -397,15 +435,23 @@ export function addNpcToWz(wzInfo: WzFileInfo, npcId: number, pngBuf: Buffer): v
 }
 
 /** Generate server-side Npc.wz XML */
-export function generateNpcXml(npcId: number, name: string, pngBuf: Buffer): string {
+export function generateNpcXml(
+  npcId: number,
+  _name: string,
+  pngBuf: Buffer,
+  scriptName?: string
+): string {
   const canvas = decodePngToCanvas(pngBuf);
   const padded = String(npcId).padStart(7, "0");
+  const scriptBlock = scriptName
+    ? `\n    <imgdir name="script">\n      <imgdir name="0">\n        <string name="script" value="${scriptName}"/>\n      </imgdir>\n    </imgdir>`
+    : "";
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <imgdir name="${padded}.img">
   <imgdir name="info">
     <imgdir name="speak">
       <string name="0" value="n0"/>
-    </imgdir>
+    </imgdir>${scriptBlock}
   </imgdir>
   <imgdir name="stand">
     <canvas name="0" width="${canvas.width}" height="${canvas.height}">

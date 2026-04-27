@@ -1634,29 +1634,50 @@ function serializeStringBlock(s: string, ks: Buffer): Buffer {
   return w.toBuffer();
 }
 
+/**
+ * Set a string-typed child by name, replacing any existing child of any type
+ * with the same name. Used by all three String.wz patchers so a republish
+ * with an updated name actually overwrites the prior value instead of being
+ * silently dropped.
+ */
+function upsertStringChild(parent: PropNode, name: string, value: string) {
+  if (!parent.children) parent.children = [];
+  const idx = parent.children.findIndex((c) => c.name === name);
+  const node: PropNode = { name, type: "string", value };
+  if (idx >= 0) parent.children[idx] = node;
+  else parent.children.push(node);
+}
+
 function addStringToSection(tree: PropNode, entry: StringEntry) {
-  // Navigate: root → "Eqp" → sectionName
-  const eqp = tree.children?.find((c) => c.name === "Eqp");
-  if (!eqp?.children) return;
+  // Navigate: root → "Eqp" → sectionName. Create either if missing — v83
+  // String.wz has Eqp.img/Eqp/<EquipSection> for stock equip categories, but
+  // not for cosmetic hair/face IDs we add ourselves. Creating the missing
+  // node lets the client look up custom hair/face names by the same path.
+  if (!tree.children) tree.children = [];
+  let eqp = tree.children.find((c) => c.name === "Eqp");
+  if (!eqp) {
+    eqp = { name: "Eqp", type: "sub", children: [] };
+    tree.children.push(eqp);
+  }
+  if (!eqp.children) eqp.children = [];
 
-  const section = eqp.children.find((c) => c.name === entry.sectionName);
-  if (!section?.children) return;
+  let section = eqp.children.find((c) => c.name === entry.sectionName);
+  if (!section) {
+    section = { name: entry.sectionName, type: "sub", children: [] };
+    eqp.children.push(section);
+  }
+  if (!section.children) section.children = [];
 
-  // Check if entry already exists
-  const existing = section.children.find(
-    (c) => c.name === String(entry.itemId)
-  );
-  if (existing) return;
-
-  // Add new entry
-  section.children.push({
-    name: String(entry.itemId),
-    type: "sub",
-    children: [
-      { name: "name", type: "string", value: entry.name },
-      { name: "desc", type: "string", value: entry.desc },
-    ],
-  });
+  let item = section.children.find((c) => c.name === String(entry.itemId));
+  if (!item) {
+    item = { name: String(entry.itemId), type: "sub", children: [] };
+    section.children.push(item);
+  }
+  upsertStringChild(item, "name", entry.name);
+  // Stock v83 hair/face entries have only `name`; equip entries have name+desc.
+  // Skip the desc node entirely when empty so cosmetic injections don't
+  // accumulate empty strings the server will never read.
+  if (entry.desc) upsertStringChild(item, "desc", entry.desc);
 }
 
 function writePropertyTree(writer: ImgWriter, node: PropNode) {
@@ -2013,6 +2034,165 @@ export function addStringsToStringWz(
   eqpEntry.originalOffset = undefined; // use data instead of copying from original
 }
 
+// ---------- Item.wz Etc bucket building ----------
+//
+// Custom ETC items live in a brand-new 0409.img bucket (empty in v83 stock).
+// We rebuild the entire bucket from scratch on every publish — that way the
+// resulting file has self-contained string-pool offsets and we never risk
+// relocating an existing canvas's offsets when reserializing.
+
+interface EtcItemEntry {
+  itemId: number;
+  iconPng?: Buffer;
+  slotMax?: number;
+  price?: number;
+  quest?: number;
+}
+
+/** Build a complete Item.wz/Etc/<bucket>.img blob from a list of ETC items. */
+export function buildEtcBucketImg(items: EtcItemEntry[], ks: Buffer): Buffer {
+  const w = new ImgWriter(ks);
+  w.writeStringBlock("Property", 0x73, 0x1b);
+  w.writeUInt16(0);
+  w.writeCompressedInt(items.length);
+
+  for (const item of items) {
+    w.writeStringBlock(String(item.itemId), 0x00, 0x01);
+    w.writeByte(9);
+    const itemLenPos = w.pos;
+    w.writeInt32(0);
+    w.writeStringBlock("Property", 0x73, 0x1b);
+    w.writeUInt16(0);
+    w.writeCompressedInt(1); // 1 child: info
+
+    w.writeStringBlock("info", 0x00, 0x01);
+    w.writeByte(9);
+    const infoLenPos = w.pos;
+    w.writeInt32(0);
+    w.writeStringBlock("Property", 0x73, 0x1b);
+    w.writeUInt16(0);
+
+    const slotMax = item.slotMax ?? 100;
+    const price = item.price ?? 0;
+    const quest = item.quest ?? 0;
+    const childCount =
+      (item.iconPng ? 1 : 0) + 2 + (quest ? 1 : 0); // icon? + slotMax + price + quest?
+    w.writeCompressedInt(childCount);
+
+    if (item.iconPng) {
+      const icon = decodePngToIcon(item.iconPng);
+      writeIconCanvas(w, "icon", icon, 0, icon.height);
+    }
+    w.writeStringBlock("slotMax", 0x00, 0x01);
+    w.writeByte(3);
+    w.writeCompressedInt(slotMax);
+    w.writeStringBlock("price", 0x00, 0x01);
+    w.writeByte(3);
+    w.writeCompressedInt(price);
+    if (quest) {
+      w.writeStringBlock("quest", 0x00, 0x01);
+      w.writeByte(3);
+      w.writeCompressedInt(quest);
+    }
+
+    w.patchInt32(infoLenPos, w.pos - infoLenPos - 4);
+    w.patchInt32(itemLenPos, w.pos - itemLenPos - 4);
+  }
+
+  return w.toBuffer();
+}
+
+/**
+ * Inject (or replace) an ETC bucket .img into Item.wz under /Etc/<bucketName>.
+ * The bucket is built from scratch each call so existing canvas offsets
+ * inside the bucket are never relocated.
+ */
+export function addEtcBucketToItemWz(
+  wzInfo: WzFileInfo,
+  bucketName: string,
+  items: EtcItemEntry[]
+): void {
+  const imgData = buildEtcBucketImg(items, wzInfo.keyStream);
+  const checksum = computeChecksum(imgData);
+
+  let etcDir = wzInfo.root.find((e) => e.type === "dir" && e.name === "Etc");
+  if (!etcDir) {
+    etcDir = {
+      type: "dir",
+      name: "Etc",
+      blockSize: 0,
+      checksum: 0,
+      offset: 0,
+      children: [],
+    };
+    wzInfo.root.push(etcDir);
+  }
+  if (!etcDir.children) etcDir.children = [];
+
+  const newEntry: WzEntry = {
+    type: "img",
+    name: bucketName,
+    blockSize: imgData.length,
+    checksum,
+    offset: 0,
+    data: imgData,
+  };
+
+  const idx = etcDir.children.findIndex((e) => e.name === bucketName);
+  if (idx >= 0) etcDir.children[idx] = newEntry;
+  else etcDir.children.push(newEntry);
+}
+
+/** Patch String.wz/Etc.img to add ETC item names + descriptions. */
+export function addEtcStringsToStringWz(
+  wzInfo: WzFileInfo,
+  entries: Array<{ itemId: number; name: string; desc: string }>
+): void {
+  const etcEntry = wzInfo.root.find(
+    (e) => e.type === "img" && e.name === "Etc.img"
+  );
+  if (!etcEntry) throw new Error("Etc.img not found in String.wz");
+
+  const origFd = openSync(wzInfo.filePath, "r");
+  let imgData: Buffer;
+  try {
+    imgData = Buffer.alloc(etcEntry.blockSize);
+    readSync(origFd, imgData, 0, etcEntry.blockSize, etcEntry.originalOffset!);
+  } finally {
+    closeSync(origFd);
+  }
+
+  const reader = new ImgReader(imgData, wzInfo.keyStream);
+  const tree = reader.parseRoot();
+  if (!tree.children) tree.children = [];
+  let etcSection = tree.children.find((c) => c.name === "Etc");
+  if (!etcSection) {
+    etcSection = { name: "Etc", type: "sub", children: [] };
+    tree.children.push(etcSection);
+  }
+  if (!etcSection.children) etcSection.children = [];
+
+  for (const e of entries) {
+    let item = etcSection.children.find((c) => c.name === String(e.itemId));
+    if (!item) {
+      item = { name: String(e.itemId), type: "sub", children: [] };
+      etcSection.children.push(item);
+    }
+    upsertStringChild(item, "name", e.name);
+    if (e.desc) upsertStringChild(item, "desc", e.desc);
+  }
+
+  const writer = new ImgWriter(wzInfo.keyStream);
+  writePropertyTree(writer, tree);
+  const newImgData = writer.toBuffer();
+  const checksum = computeChecksum(newImgData);
+
+  etcEntry.blockSize = newImgData.length;
+  etcEntry.checksum = checksum;
+  etcEntry.data = newImgData;
+  etcEntry.originalOffset = undefined;
+}
+
 /** Add an NPC name entry to Npc.img in a parsed String.wz */
 export function addNpcToStringWz(
   wzInfo: WzFileInfo,
@@ -2039,22 +2219,16 @@ export function addNpcToStringWz(
   const reader = new ImgReader(imgData, wzInfo.keyStream);
   const tree = reader.parseRoot();
 
-  // Npc.img is flat: root children keyed by NPC ID string
+  // Npc.img is flat: root children keyed by NPC ID string.
+  if (!tree.children) tree.children = [];
   const npcIdStr = String(npcId);
-  const existing = tree.children?.find((c) => c.name === npcIdStr);
-  if (!existing) {
-    const children: PropNode[] = [
-      { name: "name", type: "string", value: name },
-    ];
-    if (dialogue) {
-      children.push({ name: "n0", type: "string", value: dialogue });
-    }
-    tree.children!.push({
-      name: npcIdStr,
-      type: "sub",
-      children,
-    });
+  let item = tree.children.find((c) => c.name === npcIdStr);
+  if (!item) {
+    item = { name: npcIdStr, type: "sub", children: [] };
+    tree.children.push(item);
   }
+  upsertStringChild(item, "name", name);
+  if (dialogue) upsertStringChild(item, "n0", dialogue);
 
   // Re-serialize
   const writer = new ImgWriter(wzInfo.keyStream);

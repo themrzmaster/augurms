@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Card from "@/components/Card";
 
-type AssetType = "hair" | "face";
+type AssetType = "hair" | "face" | "npc" | "etc";
 
 interface Asset {
   id: number;
@@ -17,6 +17,7 @@ interface Asset {
   preview_url: string | null;
   status: "ready" | "published" | "rejected";
   notes: string | null;
+  attrs: any;
   uploaded_by: string | null;
   uploaded_at: string;
   published_at: string | null;
@@ -36,7 +37,30 @@ interface PublishStatus {
 const TYPE_TABS: { key: AssetType; label: string; icon: string }[] = [
   { key: "hair", label: "Hair", icon: "💇" },
   { key: "face", label: "Face", icon: "😊" },
+  { key: "npc", label: "NPC", icon: "🧙" },
+  { key: "etc", label: "ETC item", icon: "📦" },
 ];
+
+const FILE_INPUT_ACCEPT: Record<AssetType, string> = {
+  hair: ".img,application/octet-stream",
+  face: ".img,application/octet-stream",
+  npc: "image/png",
+  etc: "image/png",
+};
+
+const FILE_HINT: Record<AssetType, string> = {
+  hair: "binary .img file (GMS-encrypted, exported from HaRepacker)",
+  face: "binary .img file (GMS-encrypted, exported from HaRepacker)",
+  npc: "PNG sprite (single standing frame; auto-trimmed)",
+  etc: "PNG icon (typically 32×32; auto-trimmed)",
+};
+
+const PUBLISH_TARGET: Record<AssetType, string> = {
+  hair: "Character.wz + String.wz",
+  face: "Character.wz + String.wz",
+  npc: "Npc.wz + String.wz + server tarball",
+  etc: "Item.wz + String.wz + server tarball",
+};
 
 const STATUS_BADGE: Record<Asset["status"], string> = {
   ready: "bg-accent-blue/10 text-accent-blue",
@@ -111,7 +135,12 @@ export default function AssetsPage() {
   }, [publishing, load]);
 
   const onPublish = async () => {
-    if (!confirm(`Publish all ready ${type} assets to Character.wz? This bumps the launcher version and forces every player to redownload Character.wz (~200 MB).`)) return;
+    if (
+      !confirm(
+        `Publish all ready assets across all types? Each affected WZ file (Character.wz, Npc.wz, Item.wz, String.wz, server tarball) gets patched and uploaded; the launcher version bumps and players redownload only the files that changed.`
+      )
+    )
+      return;
     setPublishing(true);
     setPublishStatus({ status: "running", step: "Starting..." });
     try {
@@ -157,10 +186,10 @@ export default function AssetsPage() {
     <div className="p-6">
       <header className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-text-primary">Hair &amp; Face Assets</h1>
+          <h1 className="text-2xl font-semibold text-text-primary">Custom Assets</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Upload imported hair/face <code className="rounded bg-bg-card px-1 text-xs">.img</code> files (binary, GMS-encrypted) and
-            inject them into <code className="rounded bg-bg-card px-1 text-xs">Character.wz</code> on publish.
+            Stage hair/face <code className="rounded bg-bg-card px-1 text-xs">.img</code> blobs, NPC sprites, and ETC item icons.
+            Publish patches the right WZ files ({PUBLISH_TARGET[type]}) and bumps the launcher manifest.
           </p>
         </div>
         <div className="flex gap-2">
@@ -248,7 +277,7 @@ export default function AssetsPage() {
           <p className="text-sm text-text-secondary">Loading…</p>
         ) : assets.length === 0 ? (
           <p className="text-sm text-text-secondary">
-            No {type} assets uploaded yet. Drop a <code className="rounded bg-bg-card px-1 text-xs">.img</code> file above to start.
+            No {type} assets uploaded yet. Drop a {FILE_INPUT_ACCEPT[type].includes("png") ? "PNG" : ".img"} file above to start.
           </p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -317,21 +346,28 @@ function UploadForm({
   const [sourceVersion, setSourceVersion] = useState("");
   const [uploadedBy, setUploadedBy] = useState("");
   const [notes, setNotes] = useState("");
+  // NPC-only
+  const [dialogue, setDialogue] = useState("");
+  const [scriptName, setScriptName] = useState("");
+  // ETC-only
+  const [desc, setDesc] = useState("");
+  const [slotMax, setSlotMax] = useState("");
+  const [price, setPrice] = useState("");
+  const [quest, setQuest] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Pre-fill ID from suggestion when type changes / suggestion arrives
   useEffect(() => {
     if (suggestedId != null && inGameId === "") {
       setInGameId(String(suggestedId));
     }
   }, [suggestedId, inGameId]);
 
-  // Auto-detect ID from filename like "00030000.img"
+  // Auto-detect ID from a filename like "00030000.img" or "9901000.png"
   const onFile = (f: File) => {
     setFile(f);
-    const m = f.name.match(/^0*(\d+)\.img$/i);
+    const m = f.name.match(/^0*(\d+)\.(img|png)$/i);
     if (m) setInGameId(m[1]);
   };
 
@@ -346,13 +382,21 @@ function UploadForm({
     setFile(null);
     setName("");
     setNotes("");
+    setDialogue("");
+    setScriptName("");
+    setDesc("");
+    setSlotMax("");
+    setPrice("");
+    setQuest(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
+
+  const expectedExt = FILE_INPUT_ACCEPT[type].includes("png") ? "PNG" : ".img";
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) {
-      alert("Pick a .img file first");
+      alert(`Pick a ${expectedExt} file first`);
       return;
     }
     const id = parseInt(inGameId, 10);
@@ -370,6 +414,21 @@ function UploadForm({
       if (sourceVersion.trim()) fd.append("source_version", sourceVersion.trim());
       if (uploadedBy.trim()) fd.append("uploaded_by", uploadedBy.trim());
       if (notes.trim()) fd.append("notes", notes.trim());
+
+      const attrs: Record<string, any> = {};
+      if (type === "npc") {
+        if (dialogue.trim()) attrs.dialogue = dialogue.trim();
+        if (scriptName.trim()) attrs.script = scriptName.trim();
+      } else if (type === "etc") {
+        if (desc.trim()) attrs.desc = desc.trim();
+        if (slotMax.trim()) attrs.slotMax = parseInt(slotMax, 10);
+        if (price.trim()) attrs.price = parseInt(price, 10);
+        if (quest) attrs.quest = 1;
+      }
+      if (Object.keys(attrs).length > 0) {
+        fd.append("attrs", JSON.stringify(attrs));
+      }
+
       const res = await fetch("/api/admin/assets", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -412,7 +471,7 @@ function UploadForm({
             </>
           ) : (
             <>
-              <p>Drop a binary <code>.img</code> file here, or</p>
+              <p>Drop a {expectedExt} file here, or</p>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -420,15 +479,13 @@ function UploadForm({
               >
                 Browse…
               </button>
-              <p className="mt-1 text-xs text-text-muted">
-                e.g. <code>00060000.img</code> exported from HaRepacker (GMS encryption)
-              </p>
+              <p className="mt-1 text-xs text-text-muted">{FILE_HINT[type]}</p>
             </>
           )}
           <input
             ref={fileInputRef}
             type="file"
-            accept=".img,application/octet-stream"
+            accept={FILE_INPUT_ACCEPT[type]}
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -462,7 +519,13 @@ function UploadForm({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Pink Twintails"
+              placeholder={
+                type === "npc"
+                  ? "Royal Cosmetic Stylist"
+                  : type === "etc"
+                    ? "Royal Vote Shard"
+                    : "Pink Twintails"
+              }
               maxLength={255}
               className="rounded border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary focus:border-accent-gold focus:outline-none"
             />
@@ -490,6 +553,87 @@ function UploadForm({
             />
           </label>
         </div>
+
+        {type === "npc" && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-xs text-text-secondary">
+              <span>
+                Script name{" "}
+                <span className="text-text-muted">(makes the NPC clickable; matches a server NPC script file)</span>
+              </span>
+              <input
+                type="text"
+                value={scriptName}
+                onChange={(e) => setScriptName(e.target.value)}
+                placeholder="RoyalStylist"
+                pattern="[A-Za-z0-9_]*"
+                className="rounded border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary focus:border-accent-gold focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-text-secondary">
+              <span>Default dialogue (n0)</span>
+              <input
+                type="text"
+                value={dialogue}
+                onChange={(e) => setDialogue(e.target.value)}
+                placeholder="Welcome to the Royal Salon..."
+                maxLength={500}
+                className="rounded border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary focus:border-accent-gold focus:outline-none"
+              />
+            </label>
+          </div>
+        )}
+
+        {type === "etc" && (
+          <div className="grid gap-3 sm:grid-cols-4">
+            <label className="flex flex-col gap-1 text-xs text-text-secondary sm:col-span-4">
+              <span>Description (optional)</span>
+              <input
+                type="text"
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                placeholder="Used to redeem cosmetics at the Royal Salon."
+                maxLength={500}
+                className="rounded border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary focus:border-accent-gold focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-text-secondary">
+              <span>Stack max (slotMax)</span>
+              <input
+                type="number"
+                value={slotMax}
+                onChange={(e) => setSlotMax(e.target.value)}
+                placeholder="999"
+                min={1}
+                max={32767}
+                className="rounded border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary focus:border-accent-gold focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-text-secondary">
+              <span>Vendor price (mesos)</span>
+              <input
+                type="number"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0"
+                min={0}
+                className="rounded border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary focus:border-accent-gold focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-text-secondary sm:col-span-2">
+              <span>Flags</span>
+              <span className="flex items-center gap-2 rounded border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={quest}
+                  onChange={(e) => setQuest(e.target.checked)}
+                  className="accent-accent-gold"
+                />
+                <span>Quest item (untradeable, stack-only)</span>
+              </span>
+            </label>
+          </div>
+        )}
 
         <label className="flex flex-col gap-1 text-xs text-text-secondary">
           <span>Notes</span>

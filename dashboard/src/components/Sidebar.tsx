@@ -29,10 +29,11 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/worldmap", label: "World Map", icon: "🌏" },
       { href: "/mobs", label: "Mobs", icon: "👾" },
       { href: "/items", label: "Items", icon: "🎒" },
-      { href: "/assets", label: "Hair & Face", icon: "💇" },
+      { href: "/assets", label: "Custom Assets", icon: "💇" },
       { href: "/reactors", label: "Reactors", icon: "💥" },
       { href: "/drops", label: "Drops", icon: "💎" },
       { href: "/scripts", label: "Scripts", icon: "📜" },
+      { href: "/wz", label: "Raw WZ Upload", icon: "📦" },
     ],
   },
   {
