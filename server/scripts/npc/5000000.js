@@ -20,6 +20,7 @@ var commonMaleHairs = []; var commonFemaleHairs = []; var commonMaleFaces = []; 
 
 var status = -1;
 var selectionType = -1; 
+var pendingSelection = -1;
 var mainStylesToUse = []; 
 var weeklyRotation = [];  
 var returnState = ""; 
@@ -569,11 +570,28 @@ function action(mode, type, selection) {
     }
 
     // ──────────────────────────
-    // Status 4: EXECUTION (CURATOR)
+    // Status 4: CONFIRMATION (CURATOR)
     // ──────────────────────────
     else if (status == 4) {
         if (returnState == "CURATOR_PREVIEW") {
-            var chosenId = mainStylesToUse[selection]; var isPromoting = (selectionType < 104);
+            pendingSelection = selection; // Save their choice for the next status
+            
+            var chosenId = mainStylesToUse[pendingSelection]; 
+            var isPromoting = (selectionType < 104);
+            var actionWord = isPromoting ? "PROMOTE this style to PREMIUM" : "DEMOTE this style to COMMON";
+
+            cm.sendYesNo("Are you absolutely sure you want to #r" + actionWord + "#k?\r\n\r\nStyle ID: #b" + chosenId + "#k\r\n\r\n#r(This will write directly to the live database and cannot be easily undone!)#k");
+        }
+    }
+        
+    // ──────────────────────────
+    // Status 5: EXECUTION (CURATOR)
+    // ──────────────────────────
+    else if (status == 5) {
+        if (returnState == "CURATOR_PREVIEW") {
+            var chosenId = mainStylesToUse[pendingSelection]; 
+            var isPromoting = (selectionType < 104);
+            
             var success = updateStyleInDB(chosenId, "PREMIUM", isPromoting);
             if (!success) { cm.sendOk("#rFailed to write to SQL database. Check server logs!#k"); cm.dispose(); return; }
 
@@ -591,10 +609,12 @@ function action(mode, type, selection) {
                 if (targetCommonArray.indexOf(chosenId) == -1) targetCommonArray.push(chosenId); 
             }
 
-            mainStylesToUse = mainStylesToUse.slice(selection + 1).concat(mainStylesToUse.slice(0, selection));
+            // Slice out the updated style and reorganize the preview window
+            mainStylesToUse = mainStylesToUse.slice(pendingSelection + 1).concat(mainStylesToUse.slice(0, pendingSelection));
             if (mainStylesToUse.length == 0) { cm.sendOk("That is the end of my collection!"); cm.dispose(); return; }
+            
             cm.sendStyle("Updated successfully!\r\n\r\n#r(Change is live instantly for players)#k", mainStylesToUse);
-            status = 3; 
+            status = 3; // Loop back to the preview state so they can keep editing without closing the NPC
         }
     }
 }
