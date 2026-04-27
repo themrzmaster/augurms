@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Card from "@/components/Card";
 
@@ -62,6 +62,18 @@ function formatSize(bytes: number): string {
 type Source = "client" | "server";
 
 export default function ExplorerPage() {
+  // useSearchParams forces client-side render — Next.js needs the consumer
+  // wrapped in Suspense or the prerender step bails.
+  return (
+    <Suspense
+      fallback={<div className="p-6 text-sm text-text-muted">Loading explorer…</div>}
+    >
+      <ExplorerInner />
+    </Suspense>
+  );
+}
+
+function ExplorerInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialFile = searchParams.get("file");
