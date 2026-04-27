@@ -1,5 +1,6 @@
 export {
   parseWzFile,
+  parseImgBytes,
   saveWzFile,
   addEquipToCharacterWz,
   addImgToCharacterWz,
@@ -22,6 +23,7 @@ export type {
   WzHeader,
   WeaponData,
   WeaponFrame,
+  PropNode,
 } from "./patcher";
 
 export {

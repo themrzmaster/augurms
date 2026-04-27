@@ -1628,6 +1628,18 @@ class ImgReader {
   }
 }
 
+/**
+ * Public wrapper around ImgReader so tools outside this module (e.g. the
+ * read-only WZ explorer) can parse .img bytes into a PropNode tree without
+ * pulling the whole file's machinery in.
+ */
+export function parseImgBytes(imgData: Buffer, keyStream: Buffer): PropNode {
+  const reader = new ImgReader(imgData, keyStream);
+  return reader.parseRoot();
+}
+
+export type { PropNode };
+
 function serializeStringBlock(s: string, ks: Buffer): Buffer {
   const w = new ImgWriter(ks);
   w.writeStringBlock(s, 0x73, 0x1b);

@@ -34,6 +34,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/drops", label: "Drops", icon: "💎" },
       { href: "/scripts", label: "Scripts", icon: "📜" },
       { href: "/wz", label: "Raw WZ Upload", icon: "📦" },
+      { href: "/explorer", label: "WZ Explorer", icon: "🔍" },
     ],
   },
   {
