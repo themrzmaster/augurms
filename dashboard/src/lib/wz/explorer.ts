@@ -8,6 +8,7 @@ import {
 import {
   decodeCanvasRawBytes,
   decodeVectorRawBytes,
+  peekCanvasMetadata,
   peekOtherTypeName,
 } from "./canvas-decoder";
 import {
@@ -38,6 +39,8 @@ interface CacheEntry {
   wzInfo: WzFileInfo;
   etag: string | null;
   fetchedAt: number;
+  /** Per-.img parsed trees, lazy-populated. Reset when CacheEntry replaces. */
+  imgTreeCache: Map<string, PropNode>;
 }
 const CACHE = new Map<string, CacheEntry>();
 const IN_FLIGHT = new Map<string, Promise<WzFileInfo>>();
@@ -103,7 +106,12 @@ export async function getWzCached(
         await downloadWz(name, cachePath);
       }
       const wzInfo = parseWzFile(cachePath);
-      CACHE.set(name, { wzInfo, etag: remoteEtag, fetchedAt: Date.now() });
+      CACHE.set(name, {
+        wzInfo,
+        etag: remoteEtag,
+        fetchedAt: Date.now(),
+        imgTreeCache: new Map(),
+      });
       return wzInfo;
     } finally {
       IN_FLIGHT.delete(name);
@@ -191,8 +199,7 @@ export interface PropNodeView {
   type: "sub" | "string" | "int" | "canvas" | "vector" | "other";
   value?: string | number;
   children?: PropNodeView[];
-  // canvas
-  png?: string; // data URL
+  // canvas — pixel data is fetched lazily via /api/admin/wz/explore/canvas
   width?: number;
   height?: number;
   format?: number;
@@ -253,15 +260,16 @@ function shapeNode(node: PropNode): PropNodeView {
   const typeName = peekOtherTypeName(raw);
   if (typeName === "Canvas") {
     try {
-      const c = decodeCanvasRawBytes(raw);
+      // Cheap metadata peek only. Frontend fetches the actual PNG via the
+      // /canvas endpoint so we don't ship multi-MB base64 in /img responses.
+      const meta = peekCanvasMetadata(raw);
       return {
         name: node.name,
         type: "canvas",
-        width: c.width,
-        height: c.height,
-        format: c.format,
-        formatSupported: c.formatSupported,
-        png: `data:image/png;base64,${c.png.toString("base64")}`,
+        width: meta.width,
+        height: meta.height,
+        format: meta.format,
+        formatSupported: meta.formatSupported,
       };
     } catch (err: any) {
       return {
@@ -311,12 +319,74 @@ export function getImgPropertyTree(
   };
 }
 
+/** Get a parsed PropNode tree for a top-level .img, caching the result. */
+function getCachedImgTree(wzName: string, imgName: string): PropNode | null {
+  const entry = CACHE.get(wzName);
+  if (!entry) return null;
+  const cached = entry.imgTreeCache.get(imgName);
+  if (cached) return cached;
+  const target = entry.wzInfo.root.find(
+    (e) => e.type === "img" && e.name === imgName
+  );
+  if (!target) return null;
+  const imgData = readImgBytes(entry.wzInfo, target);
+  const tree = parseImgBytes(imgData, entry.wzInfo.keyStream);
+  entry.imgTreeCache.set(imgName, tree);
+  return tree;
+}
+
+/** Walk a parsed PropNode tree by slash-separated prop path. */
+function walkPropPath(tree: PropNode, propPath: string): PropNode | null {
+  const parts = propPath.split("/").filter(Boolean);
+  let cur: PropNode | undefined = tree;
+  for (const part of parts) {
+    if (!cur || !cur.children) return null;
+    cur = cur.children.find((c) => c.name === part);
+  }
+  return cur ?? null;
+}
+
+/** Decode a single canvas inside an .img and return its PNG bytes. */
+export function getCanvasPng(
+  wzInfo: WzFileInfo,
+  imgPath: string,
+  propPath: string
+): { png: Buffer; width: number; height: number; format: number } {
+  const target = resolvePath(wzInfo, imgPath);
+  if (!target) throw new Error(`Path not found: ${imgPath}`);
+  if ("isRoot" in target || target.type !== "img") {
+    throw new Error(`${imgPath} is not an .img file`);
+  }
+  const imgData = readImgBytes(wzInfo, target);
+  const tree = parseImgBytes(imgData, wzInfo.keyStream);
+  const node = walkPropPath(tree, propPath);
+  if (!node) throw new Error(`Prop not found: ${propPath}`);
+  if (node.type !== "other" || !node.rawBytes) {
+    throw new Error(`Prop ${propPath} is not an extended type`);
+  }
+  const typeName = peekOtherTypeName(node.rawBytes);
+  if (typeName !== "Canvas") {
+    throw new Error(`Prop ${propPath} is not a Canvas (got ${typeName || "unknown"})`);
+  }
+  const decoded = decodeCanvasRawBytes(node.rawBytes);
+  return {
+    png: decoded.png,
+    width: decoded.width,
+    height: decoded.height,
+    format: decoded.format,
+  };
+}
+
 // ---------- Search ----------
 
 export interface SearchMatch {
   path: string;
-  kind: "dir" | "img";
+  kind: "dir" | "img" | "string";
   size?: number;
+  /** For string matches: the matched value (truncated to ~80 chars). */
+  preview?: string;
+  /** For string matches: path inside the .img to the matched leaf. */
+  propPath?: string;
 }
 
 export interface SearchResult {
@@ -325,7 +395,21 @@ export interface SearchResult {
   truncated: boolean;
 }
 
+const STRING_WZ_TOP_IMGS = new Set([
+  "Eqp.img",
+  "Etc.img",
+  "Cash.img",
+  "Consume.img",
+  "Ins.img",
+  "Map.img",
+  "Mob.img",
+  "Npc.img",
+  "Pet.img",
+  "Skill.img",
+]);
+
 export function searchWz(
+  wzName: string,
   wzInfo: WzFileInfo,
   query: string,
   limit = 100
@@ -334,7 +418,16 @@ export function searchWz(
   const matches: SearchMatch[] = [];
   let truncated = false;
 
-  function walk(entries: WzEntry[], prefix: string) {
+  function pushMatch(m: SearchMatch): boolean {
+    if (matches.length >= limit) {
+      truncated = true;
+      return false;
+    }
+    matches.push(m);
+    return true;
+  }
+
+  function walkDirs(entries: WzEntry[], prefix: string) {
     for (const e of entries) {
       if (matches.length >= limit) {
         truncated = true;
@@ -342,19 +435,60 @@ export function searchWz(
       }
       const path = prefix + "/" + e.name;
       if (e.name.toLowerCase().includes(q)) {
-        matches.push({
-          path,
-          kind: e.type,
-          size: e.blockSize,
-        });
+        pushMatch({ path, kind: e.type, size: e.blockSize });
       }
       if (e.type === "dir" && e.children) {
-        walk(e.children, path);
+        walkDirs(e.children, path);
       }
     }
   }
-  walk(wzInfo.root, "");
+  walkDirs(wzInfo.root, "");
+
+  // For String.wz, descend into top-level .imgs and match string values too.
+  if (wzName === "String.wz" && !truncated) {
+    for (const entry of wzInfo.root) {
+      if (matches.length >= limit) break;
+      if (entry.type !== "img" || !STRING_WZ_TOP_IMGS.has(entry.name)) continue;
+      const tree = getCachedImgTree(wzName, entry.name);
+      if (!tree) continue;
+      walkStringValues(tree, "/" + entry.name, "", q, pushMatch);
+    }
+  }
+
   return { query, matches, truncated };
+}
+
+function walkStringValues(
+  node: PropNode,
+  imgPath: string,
+  propPath: string,
+  q: string,
+  push: (m: SearchMatch) => boolean
+) {
+  if (node.type === "string") {
+    const value = String(node.value ?? "");
+    if (value.toLowerCase().includes(q)) {
+      const ok = push({
+        path: imgPath,
+        kind: "string",
+        preview: value.length > 80 ? value.slice(0, 77) + "…" : value,
+        propPath: propPath || node.name,
+      });
+      if (!ok) return;
+    }
+    return;
+  }
+  if (node.type === "sub" && node.children) {
+    for (const c of node.children) {
+      walkStringValues(
+        c,
+        imgPath,
+        propPath ? `${propPath}/${c.name}` : c.name,
+        q,
+        push
+      );
+    }
+  }
 }
 
 // ---------- Cache invalidation ----------

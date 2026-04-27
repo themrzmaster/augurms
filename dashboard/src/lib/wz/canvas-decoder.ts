@@ -179,16 +179,25 @@ function pixelsToPng(
 
 // ---- Public decoders ----
 
-export interface CanvasDecoded {
+export interface CanvasMetadata {
   width: number;
   height: number;
   format: number;
   formatSupported: boolean;
+}
+
+export interface CanvasDecoded extends CanvasMetadata {
   png: Buffer;
 }
 
-/** Decode the rawBytes from a "Canvas" PropNode of type "other". */
-export function decodeCanvasRawBytes(rawBytes: Buffer): CanvasDecoded {
+/** Walk past the type tag + sub-prop list and return the byte position
+ *  of the canvas dimensions, plus the parsed dimensions/format. */
+function readCanvasHeader(rawBytes: Buffer): {
+  pos: number;
+  width: number;
+  height: number;
+  format: number;
+} {
   let pos = 0;
   // 1. Type tag (re-serialized inline as "Canvas")
   pos = skipStringBlock(rawBytes, pos);
@@ -204,7 +213,7 @@ export function decodeCanvasRawBytes(rawBytes: Buffer): CanvasDecoded {
       pos = skipProperty(rawBytes, pos);
     }
   }
-  // 4. Canvas dimensions / format / data
+  // 4. Canvas dimensions / format
   const [width, p1] = readCompressedInt(rawBytes, pos);
   pos = p1;
   const [height, p2] = readCompressedInt(rawBytes, pos);
@@ -214,15 +223,40 @@ export function decodeCanvasRawBytes(rawBytes: Buffer): CanvasDecoded {
   const [, p4] = readCompressedInt(rawBytes, pos);
   pos = p4;
   pos += 4; // reserved Int32(0)
+  return { pos, width, height, format };
+}
+
+/** Cheap: peek width/height/format without inflating pixel data. */
+export function peekCanvasMetadata(rawBytes: Buffer): CanvasMetadata {
+  const { width, height, format } = readCanvasHeader(rawBytes);
+  return {
+    width,
+    height,
+    format,
+    formatSupported: format === 1 || format === 2 || format === 513,
+  };
+}
+
+/** Decode the rawBytes from a "Canvas" PropNode of type "other". */
+export function decodeCanvasRawBytes(rawBytes: Buffer): CanvasDecoded {
+  const header = readCanvasHeader(rawBytes);
+  let pos = header.pos;
   const compressedLen = rawBytes.readInt32LE(pos) - 1;
   pos += 4;
   pos += 1; // reserved byte 0
   const compressedData = rawBytes.subarray(pos, pos + compressedLen);
   const decompressed = inflateSync(compressedData);
 
-  const formatSupported = format === 1 || format === 2 || format === 513;
-  const png = pixelsToPng(decompressed, width, height, format);
-  return { width, height, format, formatSupported, png };
+  const formatSupported =
+    header.format === 1 || header.format === 2 || header.format === 513;
+  const png = pixelsToPng(decompressed, header.width, header.height, header.format);
+  return {
+    width: header.width,
+    height: header.height,
+    format: header.format,
+    formatSupported,
+    png,
+  };
 }
 
 export interface VectorDecoded {
