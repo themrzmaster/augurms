@@ -214,6 +214,53 @@ function UploadModal({
   const sizeSuspicious =
     sizeChangePct !== null && (sizeChangePct < -50 || sizeChangePct > 100);
 
+  // Cloudflare body cap is 100 MB on Free/Pro. Surface the wrangler-and-register
+  // path before the request even hits the network for anything close to that.
+  const CLOUDFLARE_LIMIT_BYTES = 95 * 1024 * 1024;
+  const tooBigForBrowser =
+    !!file && file.size >= CLOUDFLARE_LIMIT_BYTES;
+  const currentTooBigForBrowser =
+    !!current && current.size >= CLOUDFLARE_LIMIT_BYTES;
+
+  const registerExisting = async () => {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await fetch("/api/admin/wz/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const raw = await res.text();
+      let data: any = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {}
+      if (!res.ok) {
+        const fallback =
+          raw && raw.length < 500 ? raw : `${raw.slice(0, 200)}…`;
+        throw new Error(
+          data.error || `HTTP ${res.status} — ${fallback || "(no body)"}`
+        );
+      }
+      setResult(
+        data.version
+          ? `Registered. Manifest now v${data.version} (${formatSize(data.size)}, hash ${shortHash(data.hash)}).`
+          : data.serverRestart
+            ? data.serverRestart.success
+              ? `Registered. Server restart triggered (machine ${data.serverRestart.machineId}).`
+              : `Registered, but server restart failed: ${data.serverRestart.error}. Restart manually.`
+            : `Registered (${formatSize(data.size)}).`
+      );
+      setTimeout(onDone, 1500);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submit = async () => {
     if (!file) return;
     setBusy(true);
@@ -349,6 +396,20 @@ function UploadModal({
           </div>
         )}
 
+        {(tooBigForBrowser || currentTooBigForBrowser) && (
+          <div className="mt-3 rounded-lg border border-accent-gold/40 bg-accent-gold/5 px-3 py-2 text-xs text-accent-gold">
+            <p className="mb-2 font-medium">
+              File is too large for browser upload (Cloudflare caps request bodies at 100 MB).
+            </p>
+            <p className="mb-2">
+              Push the binary to R2 directly with wrangler, then click <b>Register from R2</b> below to update the manifest.
+            </p>
+            <pre className="overflow-x-auto rounded bg-black/30 px-2 py-1.5 font-mono text-[11px] text-text-primary">
+              npx wrangler r2 object put augurms-client/{name} --file {name} --remote
+            </pre>
+          </div>
+        )}
+
         {error && (
           <div className="mt-3 rounded-lg border border-accent-red/40 bg-accent-red/5 px-3 py-2 text-xs text-accent-red">
             {error}
@@ -361,7 +422,15 @@ function UploadModal({
           </div>
         )}
 
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+          <button
+            onClick={registerExisting}
+            disabled={busy}
+            title="Re-read the file from R2 and refresh the manifest entry. Use after uploading via wrangler."
+            className="rounded-lg border border-border bg-bg-card px-3 py-1.5 text-sm text-text-secondary hover:bg-bg-card-hover disabled:opacity-40"
+          >
+            {busy ? "…" : "Register from R2"}
+          </button>
           <button
             onClick={onClose}
             disabled={busy}
