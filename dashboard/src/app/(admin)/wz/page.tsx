@@ -227,8 +227,23 @@ function UploadModal({
         method: "POST",
         body: fd,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      // Read as text first so we can surface non-JSON server errors (Fly proxy
+      // 413, runtime body-limit HTML pages, etc.) instead of crashing on
+      // `Unexpected token '<'`.
+      const raw = await res.text();
+      let data: any = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        // not JSON — fall through; we'll show the raw text below
+      }
+      if (!res.ok) {
+        const fallback =
+          raw && raw.length < 500 ? raw : `${raw.slice(0, 200)}…`;
+        throw new Error(
+          data.error || `HTTP ${res.status} — ${fallback || "(no body)"}`
+        );
+      }
       setResult(
         data.version
           ? `Uploaded. Manifest now v${data.version} (${formatSize(data.size)})`
