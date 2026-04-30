@@ -910,7 +910,7 @@ public class PacketCreator {
             addCharEntry(p, chr, false);
         }
 
-        p.writeByte(1); // Always tell client PIC is registered so char deletion works (server bypasses check when ENABLE_PIC is false)
+        p.writeByte(2); // No PIC required. WASM web client has no CHECK_SPW_RESULT handler and freezes on the SelectCharPicPacket path; native client char deletion still works because DELETE_CHAR is sent with PIC regardless.
         p.writeInt(YamlConfig.config.server.COLLECTIVE_CHARSLOT ? chars.size() + c.getAvailableCharacterSlots() : c.getCharacterSlots());
         return p;
     }
