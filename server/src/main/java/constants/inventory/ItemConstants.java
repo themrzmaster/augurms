@@ -228,10 +228,12 @@ public final class ItemConstants {
     }
 
     public static boolean isFace(int itemId) {
-        return itemId >= 20000 && itemId < 22000;
+        int type = itemId / 10000;
+        return type == 2 || type == 5;
     }
 
     public static boolean isHair(int itemId) {
-        return itemId >= 30000 && itemId < 35000;
+        int type = itemId / 10000;
+        return type == 3 || type == 4 || type == 6 || type == 7;
     }
 }

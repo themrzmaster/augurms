@@ -43,7 +43,10 @@ import net.server.world.PartyCharacter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import provider.Data;
+import provider.DataProvider;
 import provider.DataProviderFactory;
+import provider.DataDirectoryEntry;
+import provider.DataFileEntry;
 import provider.wz.WZFiles;
 import scripting.AbstractPlayerInteraction;
 import server.*;
@@ -68,8 +71,15 @@ import tools.packets.WeddingPackets;
 
 import java.awt.*;
 import java.sql.SQLException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
+import java.util.Set;
 import java.util.List;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
 
@@ -85,6 +95,10 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
     private String getText;
     private boolean itemScript;
     private List<PartyCharacter> otherParty;
+
+    private static final Map<String, List<Integer>> styleCache = new ConcurrentHashMap<>();
+    private static long styleCacheExpiry = 0;
+    private static final long CACHE_TTL_MS = 60 * 60 * 1000; // 1 Hour TTL
 
     private final Map<Integer, String> npcDefaultTalks = new HashMap<>();
 
@@ -1098,5 +1112,56 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
         }
 
         return false;
+    }
+
+    /**
+     * Dynamically reads the WZ directory via DataProvider to find all valid Hair or
+     * Face IDs.
+     * Includes a TTL cache and strict sorting for deterministic LCG rotations.
+     * * @param type "Hair" or "Face"
+     * 
+     * @return List of valid IDs currently loaded on the server
+     */
+    public List<Integer> getLiveWzStyles(String type) {
+        long now = System.currentTimeMillis();
+
+        // 1. Check TTL Cache first
+        if (styleCache.containsKey(type) && now < styleCacheExpiry) {
+            return styleCache.get(type);
+        }
+
+        List<Integer> validIds = new ArrayList<>();
+        try {
+            // 2. Use DataProvider Factory with the native WZFiles enum!
+            // (Make sure to import your WZFiles enum at the top of the file)
+            DataProvider charData = DataProviderFactory.getDataProvider(WZFiles.CHARACTER);
+
+            // 3. Fetch the specific directory ("Hair" or "Face") using getEntry()
+            DataDirectoryEntry dir = (DataDirectoryEntry) charData.getRoot().getEntry(type);
+
+            if (dir != null) {
+                for (DataFileEntry file : dir.getFiles()) {
+                    String name = file.getName();
+                    // Provider typically drops .xml internally, leaving just .img
+                    if (name.endsWith(".img") || name.endsWith(".img.xml")) {
+                        String rawId = name.replace(".img.xml", "").replace(".img", "");
+                        validIds.add(Integer.parseInt(rawId));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("[Stylist] Failed to load WZ provider for " + type + ": " + e);
+        }
+
+        // 4. Guarantee Deterministic Order for the Weekly LCG Seed
+        Collections.sort(validIds);
+
+        // 5. Update the Cache (only if successful to avoid caching a broken empty list)
+        if (!validIds.isEmpty()) {
+            styleCache.put(type, validIds);
+            styleCacheExpiry = now + CACHE_TTL_MS;
+        }
+
+        return validIds;
     }
 }
