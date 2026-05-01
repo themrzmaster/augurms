@@ -140,19 +140,6 @@ ipcMain.handle("game:launch", () => {
         error: "Cannot remove dinput8.dll from game folder (file may be locked). Close any running AugurMS processes and try again, or manually delete it from: " + gamePath,
       };
     }
-  } else {
-    // HD mode on: ensure sleepTime >= 30 in config.ini for Win11 compatibility
-    const iniPath = path.join(gamePath, "config.ini");
-    try {
-      if (fs.existsSync(iniPath)) {
-        let ini = fs.readFileSync(iniPath, "utf-8");
-        const match = ini.match(/^sleepTime=(\d+)/m);
-        if (match && parseInt(match[1]) < 30) {
-          ini = ini.replace(/^sleepTime=\d+/m, "sleepTime=30");
-          fs.writeFileSync(iniPath, ini);
-        }
-      }
-    } catch {}
   }
 
   const { execFile } = require("child_process");
@@ -221,21 +208,39 @@ ipcMain.handle("settings:setHD", (_, enabled) => {
 
 ipcMain.handle("settings:getHDOptions", () => {
   const configPath = path.join(app.getPath("userData"), "config.json");
+  let stored = {};
   try {
-    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    return {
-      resolution: config.hdResolution || "1280x720",
-      fullscreen: config.hdFullscreen || false,
-    };
-  } catch {
-    return { resolution: "1280x720", fullscreen: false };
+    stored = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  } catch {}
+
+  // If config.ini exists in the game folder, treat it as the source of truth
+  // for sleepTime — the user may have edited it manually to fix a startup crash.
+  let iniSleepTime = null;
+  if (gamePath) {
+    const iniPath = path.join(gamePath, "config.ini");
+    try {
+      if (fs.existsSync(iniPath)) {
+        const m = fs.readFileSync(iniPath, "utf-8").match(/^sleepTime=(\d+)/m);
+        if (m) iniSleepTime = parseInt(m[1]);
+      }
+    } catch {}
   }
+
+  return {
+    resolution: stored.hdResolution || "1280x720",
+    fullscreen: stored.hdFullscreen || false,
+    sleepTime: iniSleepTime ?? (typeof stored.hdSleepTime === "number" ? stored.hdSleepTime : 30),
+  };
 });
 
-ipcMain.handle("settings:setHDOptions", (_, { resolution, fullscreen }) => {
-  saveConfig({ hdResolution: resolution, hdFullscreen: fullscreen });
+ipcMain.handle("settings:setHDOptions", (_, { resolution, fullscreen, sleepTime }) => {
+  const patch = { hdResolution: resolution, hdFullscreen: fullscreen };
+  if (typeof sleepTime === "number" && sleepTime >= 0) patch.hdSleepTime = sleepTime;
+  saveConfig(patch);
 
-  // Write config.ini in game directory if it exists
+  // Write config.ini in game directory if it exists. Only patch the specific
+  // keys we manage — preserve everything else (sleepTime if not provided,
+  // custom dlls, dev flags, etc.) so users can hand-edit other fields.
   if (gamePath) {
     const iniPath = path.join(gamePath, "config.ini");
     if (fs.existsSync(iniPath)) {
@@ -245,6 +250,9 @@ ipcMain.handle("settings:setHDOptions", (_, { resolution, fullscreen }) => {
         ini = ini.replace(/^width=.*/m, `width=${w}`);
         ini = ini.replace(/^height=.*/m, `height=${h}`);
         ini = ini.replace(/^WindowedMode=.*/m, `WindowedMode=${fullscreen ? "false" : "true"}`);
+        if (typeof sleepTime === "number" && sleepTime >= 0) {
+          ini = ini.replace(/^sleepTime=\d+/m, `sleepTime=${sleepTime}`);
+        }
         fs.writeFileSync(iniPath, ini);
       } catch (err) {
         console.error("Failed to update config.ini:", err);

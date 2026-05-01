@@ -28,6 +28,7 @@ function setupControls() {
   const hdOptions = $("hd-options");
   const hdResolution = $("hd-resolution");
   const hdFullscreen = $("hd-fullscreen");
+  const hdSleepTime = $("hd-sleeptime");
 
   window.augur.getHD().then((enabled) => {
     hdCheckbox.checked = enabled;
@@ -36,6 +37,9 @@ function setupControls() {
   window.augur.getHDOptions().then((opts) => {
     hdResolution.value = opts.resolution;
     hdFullscreen.checked = opts.fullscreen;
+    // Match the closest preset; fall back to 30 if value isn't in the dropdown.
+    const presets = Array.from(hdSleepTime.options).map((o) => o.value);
+    hdSleepTime.value = presets.includes(String(opts.sleepTime)) ? String(opts.sleepTime) : "30";
   });
 
   hdCheckbox.onchange = async () => {
@@ -53,10 +57,12 @@ function setupControls() {
     await window.augur.setHDOptions({
       resolution: hdResolution.value,
       fullscreen: hdFullscreen.checked,
+      sleepTime: parseInt(hdSleepTime.value, 10),
     });
   };
   hdResolution.onchange = saveHDOptions;
   hdFullscreen.onchange = saveHDOptions;
+  hdSleepTime.onchange = saveHDOptions;
 
   // Listen for download progress
   window.augur.onDownloadProgress((data) => {
