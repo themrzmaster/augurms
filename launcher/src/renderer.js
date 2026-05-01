@@ -21,7 +21,7 @@ function setupControls() {
 
   $("link-register").onclick = () => window.augur.openExternal("https://augurms.com/register");
   $("link-website").onclick = () => window.augur.openExternal("https://augurms.com");
-  $("link-discord").onclick = () => window.augur.openExternal("https://discord.gg/eS69HvxKK");
+  $("link-discord").onclick = () => window.augur.openExternal("https://discord.gg/pApUkuZjNa");
 
   // HD Mode toggle
   const hdCheckbox = $("hd-checkbox");
