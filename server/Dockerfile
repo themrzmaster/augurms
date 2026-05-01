@@ -34,10 +34,12 @@ RUN yum install -y tar gzip && yum clean all
 
 # Host the server in a location that won't have permissions issues.
 WORKDIR /opt/server
-# Download WZ files from R2 (30MB compressed, 573MB extracted)
-# Cache bust: change this value to force re-download of WZ files
-ARG WZ_VERSION=3
-ARG WZ_URL=https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/server-wz.tar.gz
+# Bake the COMPLETE baseline WZ set into the image. server-wz-baseline.tar.gz
+# is treated as immutable — the live server-wz.tar.gz is overlaid on top at
+# runtime by entrypoint.sh, so a partial overlay can never strip baseline files.
+# Cache bust: change WZ_VERSION when you deliberately ship a new baseline.
+ARG WZ_VERSION=4
+ARG WZ_URL=https://pub-34b8b332208f464a9e74fa14104be3e2.r2.dev/server-wz-baseline.tar.gz
 RUN curl -fsSL "$WZ_URL" -o /tmp/wz.tar.gz && tar xzf /tmp/wz.tar.gz && rm /tmp/wz.tar.gz
 # Copy the JAR we build earlier.
 COPY --from=jar /opt/cosmic/target/Cosmic.jar ./Server.jar
